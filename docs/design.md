@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-This document defines the intended public contracts. Nothing here is implemented or stable yet. Identifiers ending in `.v1` are reserved design candidates; they become supported interfaces only after schemas, validators, compatibility tests, and release policy land together.
+This document defines the intended public contracts. The development implementation currently covers `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
 
 ## 2. Command contract
 
@@ -293,9 +293,50 @@ Edges are created only from validated identities. Missing symbol identity may de
 
 Reserved schema: `osqar.inspector.run.v1` and process-format identifier `osqar-inspector-run-v1`.
 
-The report contains Inspector version, the complete configuration-identity object, plan digest, snapshot ID, ordered final stage-result digests, artifact counts, diagnostics, and the final required-stage decision. It does not contain the final bundle ID because the report is itself a bundle payload.
+The run-report entry point is RFC 8785 canonical UTF-8 JSON without a byte-order mark or trailing newline. It has exactly this v1 structure:
 
-The report repeats the claim boundary and states whether optional stages were skipped or degraded. Secrets, host credentials, and unredacted protected environment values are forbidden.
+```json
+{
+  "artifact_counts": [{"count": "1", "kind": "api-page"}],
+  "claim_boundary": {
+    "does_not_establish": [
+      "certification",
+      "evidence-adequacy",
+      "evidence-approval",
+      "fitness-for-use",
+      "functional-safety",
+      "security",
+      "software-qualification",
+      "standards-compliance",
+      "tool-qualification"
+    ],
+    "scope": "mechanical-structural-and-integrity-inspection"
+  },
+  "configuration_identity": {
+    "controlled_input": {"path": "inspector.json", "sha256": "<digest>", "size": "1"},
+    "defaults": {"id": "builtin-v1", "sha256": "<digest>"},
+    "overrides": [],
+    "resolved": {"sha256": "<digest>"},
+    "schema": {"id": "osqar.inspector.config.v1", "sha256": "<digest>"}
+  },
+  "diagnostics": [{"code": "stage.warning", "message": "<non-empty message>", "path": null, "severity": "warning"}],
+  "inspector": {"version": "0.1.0"},
+  "optional_stages": {"degraded": [], "skipped": []},
+  "plan_sha256": "<digest>",
+  "required_stage_decision": "satisfied",
+  "schema": "osqar.inspector.run.v1",
+  "snapshot_id": "snapshot:sha256:<digest>",
+  "stage_result_digests": ["<digest>"]
+}
+```
+
+Angle-bracketed strings are substituted values. Every enclosing object is closed. `configuration_identity` is the complete object defined in Section 3, including canonical, sorted, non-overlapping override pointers and v1-safe typed JSON override values. Digests use 64 lowercase hexadecimal characters. The Inspector version is a non-empty ASCII token formed from alphanumeric components separated by `.`, `_`, `+`, or `-`.
+
+`artifact_counts` contains zero or more records with exactly `count` and `kind`. Kinds use lowercase alphanumeric hyphen-separated tokens, occur once, and are sorted by unsigned lexicographic comparison of kind UTF-8 bytes. Counts are positive canonical decimal strings; omitted kinds have count zero. `stage_result_digests` contains the final result digest for each planned stage in plan order and rejects duplicates. Stage identifiers in `optional_stages` use lowercase alphanumeric components separated by `.`, `_`, or `-`; each list is independently sorted by unsigned UTF-8 byte order, contains no duplicates, and the two lists are disjoint. `required_stage_decision` is exactly `satisfied` or `blocked`.
+
+Each diagnostic object has exactly `code`, `message`, `path`, and `severity`. Codes use lowercase alphanumeric components separated by `.`, `_`, or `-`; messages are non-empty strings without control characters; paths are either `null` or satisfy Section 4; and severity is `info`, `warning`, or `error`. Diagnostic array order is significant and records deterministic production order.
+
+The report repeats the exact claim-boundary object shown above. It does not contain the final bundle ID because the report is itself a bundle payload. Secrets, host credentials, and unredacted protected environment values are forbidden. Schema validation establishes only structural conformance; it does not claim semantic secret detection or redaction adequacy.
 
 ## 14. Closed bundle
 
@@ -354,6 +395,14 @@ The checksum file excludes itself. After `manifest.json` and `checksums.sha256` 
 ```
 
 The angle-bracketed strings above denote substituted digest values, not literal bytes. Canonicalize the substituted object using RFC 8785 UTF-8 JSON with no byte-order mark or trailing newline, then compute its SHA-256. The bundle ID is `bundle:sha256:<digest>`, where `<digest>` is that 64-character lowercase hexadecimal result. Independent verification recomputes payload digests, canonical manifest bytes, exact checksum-file bytes, the exact identity-object bytes, and the bundle ID; extras, omissions, duplicates, and mismatches fail.
+
+### Internal-link contract
+
+After inventory, payload, manifest, and checksum validation succeeds, independent verification parses every listed payload whose path ends exactly in `.html` as UTF-8 HTML. The v1 link surface comprises `href` and `src` attributes on any element, `data` on `object`, and `poster` on `video`. Attribute and element names are ASCII case-insensitive. A `base` element carrying `href` and any `srcset` attribute fail as unsupported v1 link semantics rather than being ignored.
+
+A reference with a URI scheme or authority is external and is not fetched. Every other reference is internal. Its percent escapes must be well formed and decode as UTF-8. Query components do not affect target resolution. A root-relative path resolves from the bundle root; another non-empty path resolves from the referring HTML payload's parent; and an empty path resolves to the referring payload. Dot segments in a reference are resolved, but the result must remain inside the bundle and satisfy the Section 4 path profile. A reference ending in `/` resolves to `index.html` beneath that path. The resolved target must name a manifest payload.
+
+A non-empty fragment is percent-decoded as UTF-8 and must match exactly one `id` attribute or legacy `name` attribute on an `a` element in an HTML target. Duplicate anchor identities in one target are ambiguous and fail. Empty fragments resolve to the document itself. HTML payloads with invalid UTF-8, malformed percent escapes, unsupported link semantics, escaping paths, absent targets, non-HTML fragment targets, or missing or ambiguous anchors fail verification with typed diagnostics. External URLs are never evidence that a network resource exists or is trustworthy.
 
 Producer artifacts remain byte-identical. Inspector-owned navigation and reports are separate payloads.
 

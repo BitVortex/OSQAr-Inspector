@@ -2,7 +2,7 @@
 
 ## 1. Status and scope
 
-This document defines the target architecture for OSQAr Inspector. It is a design baseline, not a description of implemented behavior. Schema names, command shapes, and component boundaries remain provisional until implemented and protected by contract tests.
+This document defines the target architecture for OSQAr Inspector. The implemented subset is stated in the repository README; components not listed there remain design targets rather than descriptions of available behavior. Schema names, command shapes, and component boundaries remain provisional until implemented and protected by contract tests.
 
 The first usable integration targets Linux and Python 3.12 or newer. It inspects a reviewed clean Git snapshot, generates or ingests API and coverage artifacts, creates a normalized graph and navigation layer, and publishes a closed bundle for optional OSQAr import.
 
