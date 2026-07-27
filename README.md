@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** `osqar.inspector.config.v1` resolution and `osqar-inspector verify --bundle PATH` are implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, and `osqar-inspector verify --bundle PATH` are implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -35,6 +35,22 @@ uv run osqar-inspector verify --bundle <path>
 ```
 
 Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Verification parses listed `.html` payloads as UTF-8 after inventory, digest, checksum, and run-report validation; internal targets and fragments must resolve within the closed manifest inventory, while external references are not fetched. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error.
+
+Clean-Git snapshot capture is currently a library interface used by the future `build` command:
+
+```python
+from osqar_inspector.snapshot import (
+    capture_git_snapshot,
+    materialize_snapshot,
+    verify_materialized_snapshot,
+)
+
+snapshot = capture_git_snapshot(project, include=["src", "include"])
+materialize_snapshot(snapshot, workspace)
+verify_materialized_snapshot(snapshot, workspace)
+```
+
+The snapshot ID establishes only the recorded Git commit/tree, selection policy, and selected entry-byte binding. Snapshot v1 permits internal relative symlinks only when they resolve directly to a selected regular file. Its canonical manifest includes the Inspector version but excludes wall-clock capture time so repeated captures remain byte-identical. It does not establish source quality, review status, or suitability.
 
 The remaining Inspector commands are design targets, not implemented interfaces:
 

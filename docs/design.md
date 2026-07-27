@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
+This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
 
 ## 2. Command contract
 
@@ -158,11 +158,19 @@ Minimum content:
 - Git object format, commit, and tree IDs;
 - normalized include/exclude policy;
 - sorted file records;
-- selected compilation-database digest when applicable;
 - deterministic snapshot ID;
-- observational timestamp and Inspector version as non-identity metadata.
+- Inspector version as non-identity metadata; and
+- a dedicated selected compilation-database digest when an explicit snapshot
+  policy identifies such an input.
 
-Each file record contains normalized path, closed kind, canonical mode, size, and kind-specific identity payload. Initial implementation supports regular files, executables, internal symlinks with exact target identity, and explicit gitlink policy. Unsupported filesystem objects fail capture.
+The current library capture API has no compilation-database selector, so that
+conditional field is not yet applicable. The canonical snapshot manifest also
+deliberately excludes the wall-clock capture timestamp: issue #2 requires two
+captures of the same commit and policy to be byte-identical. A future execution
+or observation envelope may record its timestamp as non-identity data without
+changing the canonical snapshot manifest or snapshot ID.
+
+Each file record contains normalized path, closed kind, canonical mode, size, and kind-specific identity payload. Initial implementation supports regular files, executables, and internal relative symlinks that resolve directly to a selected regular file, with exact target identity. Gitlinks and unsupported filesystem objects fail capture.
 
 A complete pre/post comparison covers the sorted record set, not only file content digests. Added, removed, replaced, retargeted, mode-changed, or byte-changed entries block publication.
 
