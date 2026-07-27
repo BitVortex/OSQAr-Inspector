@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The first implemented slice independently validates the inventory, payload digests, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The first implemented slice independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** `osqar-inspector verify --bundle PATH` validates bundle inventory, digests, and identity. Run-report schema validation and internal-link validation remain design targets and are not implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration also remain design targets.
+> **Project status:** `osqar-inspector verify --bundle PATH` validates bundle inventory, digests, run-report structure, internal HTML links, and identity. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -34,7 +34,7 @@ uv sync
 uv run osqar-inspector verify --bundle <path>
 ```
 
-Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error, including stable diagnostics for invalid manifest JSON and unreadable inventory entries.
+Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Verification parses listed `.html` payloads as UTF-8 after inventory, digest, checksum, and run-report validation; internal targets and fragments must resolve within the closed manifest inventory, while external references are not fetched. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error.
 
 The remaining Inspector commands are design targets, not implemented interfaces:
 
