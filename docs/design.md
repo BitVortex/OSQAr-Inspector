@@ -1,0 +1,419 @@
+# Design contracts
+
+## 1. Status
+
+This document defines the intended public contracts. Nothing here is implemented or stable yet. Identifiers ending in `.v1` are reserved design candidates; they become supported interfaces only after schemas, validators, compatibility tests, and release policy land together.
+
+## 2. Command contract
+
+### `plan`
+
+```text
+osqar-inspector plan --project <path> --configuration <file>
+```
+
+Responsibilities:
+
+- parse and validate configuration;
+- resolve the clean-Git snapshot identity without materializing producer workspaces;
+- validate declared producer selectors and version constraints without executing external programs;
+- emit a deterministic declarative execution plan, unresolved capability requirements, and diagnostics; and
+- exit non-zero when a statically decidable required prerequisite is unsatisfied.
+
+`plan` may write only to stdout and stderr. It must not execute configured producers or capability probes and must not create temporary files, caches, project files, output directories, or persistent state. Producer availability and versions remain unresolved until `build`, which probes them in an owned workspace before producer execution.
+
+### `build`
+
+```text
+osqar-inspector build --project <path> --configuration <file>
+```
+
+Responsibilities:
+
+- capture and materialize the selected snapshot;
+- execute the plan in owned workspaces;
+- validate and normalize producer outputs;
+- render integration navigation;
+- validate a closed candidate bundle; and
+- publish atomically if required-stage policy is satisfied.
+
+Exit zero means the requested build satisfied required-stage policy and a validated bundle was published. It does not mean evidence approval or qualification.
+
+### `verify`
+
+```text
+osqar-inspector verify --bundle <path>
+```
+
+Responsibilities:
+
+- parse the manifest and run report under their declared schema versions;
+- require exact inventory equality;
+- recompute payload and manifest digests;
+- validate checksum-file bytes;
+- validate required entry points and internal links; and
+- report structural/provenance results without executing producers.
+
+## 3. Configuration contract
+
+Reserved schema: `osqar.inspector.config.v1`.
+
+Top-level design areas:
+
+- `schema` — exact schema identifier;
+- `project` — include/exclude policy and clean-Git requirement;
+- `publication` — destination and reproducibility controls;
+- `stages` — required/optional policy and adapter blocks;
+- `doxygen` — producer options and warning policy;
+- `coverage` — generic report, mapping, and attestation inputs;
+- `extensions` — explicitly namespaced future fields.
+
+Unknown fields fail validation unless owned by a declared extension namespace. Positive booleans such as `enabled` are preferred. Host project roots, publication roots, and workspaces are invocation context and must not enter deterministic identities as host-absolute strings. Any path value inside configuration must already satisfy the project-relative path profile in Section 4 or validation fails.
+
+Configuration precedence is:
+
+```text
+defaults < configuration file < explicit CLI overrides
+```
+
+The v1 composition algorithm is normative:
+
+1. Parse the identified default-set bytes and controlled configuration bytes as UTF-8 JSON without a byte-order mark. Reject duplicate object member names, unpaired Unicode surrogates, invalid UTF-8, trailing non-whitespace data, and any top-level value other than an object. Every number token in defaults, controlled configuration, and override values must use the integer grammar `0|-?[1-9][0-9]*`, must not be `-0`, and must have mathematical value in `[-9007199254740991, 9007199254740991]`. Fractions, exponents, and values outside that range are invalid in v1; configurations needing decimal quantities represent them using schema-defined strings.
+2. Compute `merge(defaults, controlled)` recursively. For each controlled-file member, recurse only when both the existing default value and controlled value are objects. Otherwise the controlled value replaces the default value in full. An absent controlled member preserves the default. Arrays are atomic values and never concatenate or merge; an overriding array replaces the complete prior array. `null`, booleans, numbers, strings, and object/non-object type changes likewise replace the complete prior value.
+3. Validate the complete override set before applying any override. Each `pointer` is a non-empty RFC 6901 JSON Pointer. Decode only `~0` as `~` and `~1` as `/`; any other `~` sequence is invalid. Re-encode the decoded tokens by replacing `~` with `~0`, then `/` with `~1`, and prefixing every token with `/`; the result must byte-equal the supplied pointer. Reject duplicate decoded token sequences and every pair in which either decoded token sequence is a proper prefix of the other. Thus ancestor/descendant combinations such as `/stages/doxygen` and `/stages/doxygen/enabled` are invalid rather than order-dependent.
+4. Sort accepted override records by unsigned lexicographic comparison of their pointer UTF-8 bytes and apply them in that order to the merged object. Every non-final pointer token must name an existing object member whose value is an object; traversal through arrays or scalars and a missing parent are errors. The final token may replace an existing object member or add an absent member. The supplied JSON value replaces that complete member; objects and arrays supplied by an override are not recursively merged.
+5. Validate the resulting object against the identified configuration schema, including the requirement that every configured path already satisfies Section 4. Do not normalize, coerce, default, redact, or exclude any field after this validation. The validated merged object in full is the resolved semantic object. Serialize it as RFC 8785 canonical JSON and hash those exact bytes.
+
+Because overlapping pointers are rejected, sorted application order is normative but cannot change another accepted override's target. Any parse, merge, pointer, path-profile, or final-schema error fails configuration resolution before planning.
+
+Configuration identity is a closed object containing all of the following independently computable values:
+
+- `controlled_input`: normalized project-relative configuration path, exact-byte size, and SHA-256 of the exact controlled file bytes;
+- `schema`: exact configuration-schema identifier and digest of the shipped schema bytes;
+- `defaults`: exact default-set identifier and digest of its canonical JSON object;
+- `overrides`: an RFC 8785 canonical JSON array of explicit CLI override records, sorted by JSON Pointer, with each pointer occurring once; and
+- `resolved`: SHA-256 of the complete RFC 8785 canonical semantic configuration after applying the identified defaults, controlled file, and overrides.
+
+The exact v1 identity-object shape is:
+
+```json
+{
+  "controlled_input": {"path": "<normalized project-relative path>", "sha256": "<digest>", "size": "<canonical decimal byte count>"},
+  "defaults": {"id": "<default-set identifier>", "sha256": "<digest>"},
+  "overrides": [{"pointer": "<JSON Pointer>", "value": null}],
+  "resolved": {"sha256": "<digest>"},
+  "schema": {"id": "osqar.inspector.config.v1", "sha256": "<digest>"}
+}
+```
+
+The shown `null` is an example; each `value` is the actual typed JSON value accepted by the schema. Override records have exactly `pointer` and `value`, are sorted by unsigned lexicographic comparison of JSON Pointer UTF-8 bytes, and reject duplicate pointers. Every shown object is closed. Sizes use `0|[1-9][0-9]*`; digests use 64 lowercase hexadecimal characters. The complete object is serialized as RFC 8785 canonical JSON whenever it contributes to another identity.
+
+The resolved semantic object contains every configuration field and uses only already-normalized project-relative configured paths. Redaction is a display operation and never changes this identity object. The v1 schema forbids credentials, secrets, and hidden environment-derived behavior in configuration fields or overrides. A future adapter requiring behavior-affecting protected values needs a new contract that defines a caller-reproducible non-disclosing commitment; it may not silently omit them.
+
+The run identity commits to the complete configuration-identity object, not only the resolved digest. Before v1 becomes supported, published interoperability fixtures must contain exact input bytes, defaults, overrides, expected canonical semantic bytes, and every expected digest so OSQAr can compute the identity without importing or trusting Inspector's resolver. Required fixtures cover recursive nested-object merge, scalar/object type replacement, complete array replacement, existing-member replacement, final-member addition, successful `~0`/`~1` access to object member names containing `~` and `/`, missing-parent rejection, scalar/array traversal rejection, duplicate and ancestor/descendant pointers, malformed/non-canonical pointer escapes, invalid UTF-8/Unicode/duplicate members, every rejected number form and boundary safe integers, invalid override-value numbers, non-normalized configured paths, final-schema rejection, and successful exact canonical bytes/digests.
+
+## 4. Path profile
+
+Machine-readable project and bundle paths are:
+
+- relative;
+- `/`-separated;
+- Unicode NFC;
+- without a leading `/`;
+- without empty, `.`, or `..` segments;
+- without backslash or control characters; and
+- unique after normalization.
+
+Inputs that cannot be represented uniquely under this profile fail before producer execution or publication.
+
+## 5. Canonical encoding and IDs
+
+Machine-readable contracts use UTF-8 JSON canonicalized according to RFC 8785. Digests use SHA-256 encoded as 64 lowercase hexadecimal characters.
+
+A domain identifier has the form:
+
+```text
+<kind>:sha256:<digest>
+```
+
+The digest covers canonical JSON containing the kind and its kind-specific identity object. Volatile timestamps, absolute workspace paths, hostnames, and log display metadata never contribute to deterministic IDs.
+
+Required ID kinds for the first integration:
+
+- `snapshot`;
+- `source-file`;
+- `artifact`;
+- `run`; and
+- `bundle`.
+
+`symbol` is required when the Doxygen adapter emits symbol mappings. Producer-native IDs are always scoped by snapshot and adapter identity.
+
+## 6. Snapshot manifest
+
+Reserved schema: `osqar.inspector.snapshot.v1`.
+
+Minimum content:
+
+- source kind `git-clean`;
+- Git object format, commit, and tree IDs;
+- normalized include/exclude policy;
+- sorted file records;
+- selected compilation-database digest when applicable;
+- deterministic snapshot ID;
+- observational timestamp and Inspector version as non-identity metadata.
+
+Each file record contains normalized path, closed kind, canonical mode, size, and kind-specific identity payload. Initial implementation supports regular files, executables, internal symlinks with exact target identity, and explicit gitlink policy. Unsupported filesystem objects fail capture.
+
+A complete pre/post comparison covers the sorted record set, not only file content digests. Added, removed, replaced, retargeted, mode-changed, or byte-changed entries block publication.
+
+## 7. Execution plan
+
+Reserved schema: `osqar.inspector.plan.v1`.
+
+The plan contains:
+
+- the complete configuration-identity object and snapshot identity;
+- ordered stage definitions;
+- dependency edges;
+- required/optional policy;
+- selected adapter selectors, declared version constraints, and explicitly unresolved runtime capabilities;
+- owned workspace allocations expressed without volatile paths in the plan identity;
+- declarative invocation templates rather than probe-derived command vectors;
+- expected outputs; and
+- blocking diagnostics.
+
+Semantically unordered collections are sorted by a defined identity key before hashing.
+
+## 8. Stage result
+
+Reserved schema: `osqar.inspector.stage-result.v1`.
+
+Each result contains:
+
+- stage and adapter identity;
+- status: `succeeded`, `failed`, `blocked`, `skipped`, or `degraded`;
+- required/optional policy;
+- input snapshot ID;
+- start/end timestamps and duration as observational data;
+- redacted argument vector;
+- process exit status or typed internal error;
+- stdout/stderr artifact paths;
+- output artifact records; and
+- diagnostics.
+
+A required stage must be `succeeded` for publication. Zero exit without required outputs is `failed`, not `succeeded`.
+
+## 9. Producer adapter protocol
+
+Every producer adapter implements:
+
+```text
+validate_declaration(config) -> Diagnostics + CapabilityRequirements
+plan_declaration(config, snapshot) -> DeclarativeStagePlan
+probe(config, owned_probe_workspace) -> Capability
+validate_capability(config, capability) -> Diagnostics
+plan_command(declarative_plan, capability, owned_stage_workspace) -> CommandPlan
+execute(command_plan) -> ProcessResult
+collect(process_result, workspace) -> ProducerOutput
+normalize(producer_output, snapshot) -> ArtifactRecords + MappingRecords
+```
+
+The first two operations are pure and are the only adapter operations permitted by public `plan`. `build` performs `probe` through the shared process runner in an owned workspace; a missing or incompatible required capability blocks producer execution and publication. The runner executes argument vectors without a shell, applies timeout policy, captures logs, and records executable version. Adapter-specific accepted non-zero statuses require explicit contract tests.
+
+The adapter owns no publication logic and cannot write to the live project.
+
+## 10. Doxygen mapping design
+
+The Doxygen stage generates HTML plus XML and/or a tag file. Mapping records contain:
+
+- adapter schema and version;
+- snapshot ID;
+- producer `refid`;
+- entity kind and qualified name;
+- normalized source path;
+- declaration line/column when available;
+- HTML artifact ID; and
+- HTML anchor.
+
+Duplicate `(snapshot ID, refid)` records, missing artifact targets, or ambiguous normalized source/anchor targets fail mapping ingestion. No mapping is inferred from HTML filename conventions.
+
+## 11. Coverage ingestion design
+
+Coverage uses two independent optional sidecars.
+
+### Mapping sidecar
+
+Reserved schema: `osqar.inspector.coverage-map.v1`.
+
+It binds a report entry point and report-tree digest to source-relative paths and optional line/symbol relations. Without a valid mapping, the report remains navigable only at report level.
+
+### Attestation sidecar
+
+Reserved schema: `osqar.inspector.coverage-attestation.v1`.
+
+It binds report-tree bytes to declared source snapshot, producer/configuration, test selection/result, instrumentation, and coverage-data identity. Structural and digest validation establishes internal consistency of the declaration, not authenticity or independent reproduction.
+
+### Provenance states
+
+- `verified-current-snapshot` — produced in this run against the materialized snapshot and validated by the adapter;
+- `externally-attested` — an external declaration passes schema and digest checks but was not reproduced by this run;
+- `unknown-origin` — presentation input whose source/test/configuration identity is not established.
+
+Ingestion in the current run never upgrades origin provenance by itself.
+
+## 12. Artifact graph
+
+Reserved schema: `osqar.inspector.artifact-graph.v1`.
+
+Initial node kinds:
+
+- snapshot;
+- source file;
+- symbol;
+- API page;
+- coverage report/page/summary;
+- producer log;
+- stage result; and
+- rendered navigation artifact.
+
+Initial edge kinds:
+
+- `describes-snapshot`;
+- `generated-by-stage`;
+- `documents-source`;
+- `documents-symbol`;
+- `covers-source`;
+- `covers-symbol`;
+- `has-log`; and
+- `links-to`.
+
+Edges are created only from validated identities. Missing symbol identity may degrade to a valid file relation. Ambiguous basenames never create a relation.
+
+## 13. Run report
+
+Reserved schema: `osqar.inspector.run.v1` and process-format identifier `osqar-inspector-run-v1`.
+
+The report contains Inspector version, the complete configuration-identity object, plan digest, snapshot ID, ordered final stage-result digests, artifact counts, diagnostics, and the final required-stage decision. It does not contain the final bundle ID because the report is itself a bundle payload.
+
+The report repeats the claim boundary and states whether optional stages were skipped or degraded. Secrets, host credentials, and unredacted protected environment values are forbidden.
+
+## 14. Closed bundle
+
+Reserved schema: `osqar.inspector.bundle-manifest.v1`.
+
+A release contains directories and regular files only. Its exact inventory is:
+
+```text
+manifest payload paths
++ manifest.json
++ checksums.sha256
+```
+
+`manifest.json` is an RFC 8785 canonical JSON object with exactly this v1 structure:
+
+```json
+{
+  "entries": [
+    {
+      "path": "<normalized payload path>",
+      "sha256": "<64 lowercase hexadecimal SHA-256 of exact payload bytes>",
+      "size": "0"
+    }
+  ],
+  "entry_points": {
+    "index": "<normalized path naming one entries member>",
+    "run_report": "<normalized path naming one entries member>"
+  },
+  "schema": "osqar.inspector.bundle-manifest.v1"
+}
+```
+
+Angle-bracketed strings denote substituted values. `size` is the payload byte count encoded as a canonical decimal string matching `0|[1-9][0-9]*`; signs, whitespace, and leading zeroes are forbidden. The `entries` array contains every payload file exactly once, sorted by unsigned lexicographic comparison of normalized path UTF-8 bytes. Each entry object and each enclosing object has exactly the members shown; unknown, duplicate, missing, or checksum-derived fields are forbidden. `manifest.json` must not list itself or `checksums.sha256`, and it must not contain the bundle ID, manifest digest, or checksum-file digest. Both entry-point paths must resolve to regular payload files in `entries`. Serialize the substituted object as RFC 8785 UTF-8 JSON without a byte-order mark or trailing newline. Bundle directories are only the implicit parents of listed files; empty or additional directories are forbidden.
+
+`checksums.sha256` uses this exact byte grammar:
+
+- UTF-8 without a byte-order mark;
+- exactly one record for each member of the set comprising every payload path plus `manifest.json`;
+- each record is `<64 lowercase hexadecimal SHA-256 bytes><two ASCII spaces><normalized relative path UTF-8 bytes><LF>`;
+- paths satisfy the path profile in Section 4, so no escaping is permitted or required;
+- records are sorted by unsigned lexicographic comparison of the normalized path UTF-8 bytes;
+- each path occurs exactly once; duplicate, missing, extra, empty, malformed, or non-canonical records fail validation;
+- no blank lines or carriage returns are permitted; and
+- the final record has exactly one terminal LF.
+
+The checksum file excludes itself. After `manifest.json` and `checksums.sha256` are final, construct a JSON object with exactly these members:
+
+```json
+{
+  "identity": {
+    "checksums_sha256": "<64 lowercase hexadecimal SHA-256 of exact checksums.sha256 bytes>",
+    "manifest_sha256": "<64 lowercase hexadecimal SHA-256 of exact manifest.json bytes>"
+  },
+  "kind": "bundle"
+}
+```
+
+The angle-bracketed strings above denote substituted digest values, not literal bytes. Canonicalize the substituted object using RFC 8785 UTF-8 JSON with no byte-order mark or trailing newline, then compute its SHA-256. The bundle ID is `bundle:sha256:<digest>`, where `<digest>` is that 64-character lowercase hexadecimal result. Independent verification recomputes payload digests, canonical manifest bytes, exact checksum-file bytes, the exact identity-object bytes, and the bundle ID; extras, omissions, duplicates, and mismatches fail.
+
+Producer artifacts remain byte-identical. Inspector-owned navigation and reports are separate payloads.
+
+## 15. Publication protocol
+
+The Linux publisher uses one filesystem and immutable releases:
+
+1. exclusively create an owned candidate directory `releases/.candidate-<run-unique>` beneath the publication root;
+2. write and close every payload file;
+3. generate, write, and close canonical `manifest.json` from the closed payloads;
+4. generate, write, and close canonical `checksums.sha256` from the payloads and exact manifest bytes;
+5. validate complete closure and compute the bundle ID;
+6. flush every candidate regular file, then candidate directories from leaves to root;
+7. rename the candidate to `releases/<bundle-id>/`, or, if that path exists, independently verify exact identity before discarding the candidate;
+8. flush the `releases/` directory after creation or verified reuse;
+9. exclusively create a temporary symlink `.current-<run-unique>` in the publication root whose target bytes are exactly `releases/<bundle-id>`;
+10. atomically replace the publication-root `current` entry with that temporary symlink; and
+11. flush the publication-root directory before reporting durable success.
+
+Temporary names are invocation-unique, must not exist before exclusive creation, and do not contribute to bundle identity.
+
+Pointer replacement is the observable commit point. Failures after pointer replacement but before final directory sync are `commit-indeterminate`, not ordinary failure or success. Startup recovery verifies the exact old or new pointed release before another publication.
+
+### Publication result and state machine
+
+Reserved schema: `osqar.inspector.publication-result.v1`. This result is an external process result, never a bundle payload and never a member of `manifest.json` or `checksums.sha256`. Its canonical JSON contains the schema, run identifier, closed publication state, bundle ID when computed, normalized release path when assigned, run-report path and SHA-256, prior and intended `current` targets when known, and typed diagnostics. It therefore binds the enclosing bundle ID to the immutable in-bundle run report without creating an identity cycle.
+
+The publication state is exactly one of:
+
+- `not-attempted` — stage or candidate validation prevented publication;
+- `definite-pre-commit-failure` — the operation failed before pointer replacement and the previous `current` target is unchanged;
+- `commit-indeterminate` — pointer replacement occurred or may be visible, but publication-root durability was not established;
+- `durable-success` — pointer replacement and the final publication-root flush completed;
+- `recovered-durable-success` — recovery verified the intended exact release as `current` and durably synchronized the root;
+- `recovered-no-commit` — recovery verified the previous exact release as `current`; the candidate or unpointed release is not treated as published; or
+- `recovery-blocked` — recovery could not establish one exact valid old or intended target.
+
+Before pointer replacement, the publisher durably records an invocation-unique recovery record outside every release containing the old target, intended target, bundle ID, and run-report digest. It removes that record only after durable success and a synchronized removal. Recovery validates the pointer and exact pointed bundle against this record; it never infers success from an unpointed release directory.
+
+The build exit mapping is exact: `0` for `durable-success` or `recovered-durable-success`, `10` for `not-attempted`, `11` for `definite-pre-commit-failure`, `12` for `commit-indeterminate`, `13` for `recovered-no-commit`, and `14` for `recovery-blocked`. No new publication starts while an indeterminate recovery record remains unresolved. Fault-injection tests cover each file flush, directory flush, release rename, recovery-record write/removal, pointer replacement, and final root flush boundary.
+
+## 16. OSQAr handoff contract
+
+OSQAr consumes only a closed bundle plus run report under supported versions. It validates:
+
+- bundle closure and internal consistency;
+- Inspector protocol and schema versions;
+- Inspector tool identity/version policy;
+- snapshot Git commit/tree against the trusted OSQAr source revision;
+- every component of configuration identity against the OSQAr-controlled input bytes/path, schema/default-set identifiers, and explicit overrides;
+- publication state, accepting only independently reverified durable outcomes;
+- required stage result policy; and
+- provenance classifications.
+
+OSQAr may derive candidate evidence and implementation records, but must not infer `approved`. See [OSQAr integration](osqar-integration.md).
+
+## 17. Evolution rules
+
+- Patch releases may clarify diagnostics without changing accepted data.
+- Additive optional fields require either an explicitly open extension object or a new schema version; unknown ordinary fields remain errors.
+- Removing, renaming, changing meaning, or widening accepted values requires a new schema identifier.
+- OSQAr and Inspector negotiate exact supported protocol/schema sets; they do not silently accept newer unknown contracts.
+- A migration tool may be added later, but runtime validation remains fail-closed.
