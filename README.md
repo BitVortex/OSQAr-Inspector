@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The first implemented slice independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** `osqar-inspector verify --bundle PATH` validates bundle inventory, digests, run-report structure, internal HTML links, and identity. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution and `osqar-inspector verify --bundle PATH` are implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
