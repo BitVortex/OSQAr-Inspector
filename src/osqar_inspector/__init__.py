@@ -1,0 +1,1 @@
+"""OSQAr Inspector."""

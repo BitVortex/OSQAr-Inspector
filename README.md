@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a proposed companion tool for acquiring and structuring implementation evidence for OSQAr workflows. It is designed to examine immutable software snapshots, coordinate documentation and coverage producers, and emit a deterministic inspection bundle with machine-readable identity and integrity records.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The first implemented slice independently validates the inventory, payload digests, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** architecture and design phase. No implementation, released package, stable schema, or supported CLI exists yet.
+> **Project status:** `osqar-inspector verify --bundle PATH` validates bundle inventory, digests, and identity. Run-report schema validation and internal-link validation remain design targets and are not implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration also remain design targets.
 
 ## Purpose
 
@@ -25,24 +25,23 @@ An eventual mechanical inspection result will describe only the configured stage
 - [Design contracts](docs/design.md) — command, configuration, identity, adapter, graph, bundle, and publication contracts.
 - [Integration with OSQAr](docs/osqar-integration.md) — responsibility split, process boundary, identity binding, evidence-state mapping, and packaging flow.
 
-## Intended command model
+## Quick start
 
-These command names are design targets, not implemented interfaces:
+Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required for development:
+
+```sh
+uv sync
+uv run osqar-inspector verify --bundle <path>
+```
+
+Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error, including stable diagnostics for invalid manifest JSON and unreadable inventory entries.
+
+The remaining Inspector commands are design targets, not implemented interfaces:
 
 ```text
 osqar-inspector plan --project <path> --configuration <file>
 osqar-inspector build --project <path> --configuration <file>
-osqar-inspector verify --bundle <path>
 ```
-
-The proposed OSQAr integration adds `osqar inspect` and extends the existing `osqar shipment prepare` orchestration when inspection is enabled:
-
-```text
-osqar inspect --project <path>
-osqar shipment prepare --project <path>
-```
-
-Projects that do not enable inspection are intended to retain existing OSQAr behavior.
 
 ## Initial design scope
 

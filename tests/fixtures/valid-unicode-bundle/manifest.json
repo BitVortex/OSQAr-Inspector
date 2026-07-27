@@ -1,0 +1,1 @@
+{"entries":[{"path":"café.txt","sha256":"4ca8f61495094240e190464c3321ad29a653a2b5f84e17a88f8cb001f5c53201","size":"16"},{"path":"index.html","sha256":"11eba706ac3521b05f03e7879c573bf80ad595e1410f5f69d4abb764b79058d1","size":"30"}],"entry_points":{"index":"index.html","run_report":"café.txt"},"schema":"osqar.inspector.bundle-manifest.v1"}
