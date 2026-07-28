@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "osqar.inspector.coverage-attestation.v1",
+  "title": "OSQAr Inspector coverage attestation v1",
+  "$comment": "The Inspector runtime additionally enforces Unicode NFC because JSON Schema 2020-12 has no normalization keyword.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "report",
+    "snapshot_id",
+    "configuration_identity_sha256",
+    "producer",
+    "test_selection_identity",
+    "test_result_identity",
+    "instrumentation_identity",
+    "coverage_data_identity"
+  ],
+  "properties": {
+    "schema": {"const": "osqar.inspector.coverage-attestation.v1"},
+    "report": {"$ref": "#/$defs/reportBinding"},
+    "snapshot_id": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "configuration_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+        "version": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"}
+      }
+    },
+    "test_selection_identity": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "test_result_identity": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "instrumentation_identity": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "coverage_data_identity": {"type": "string", "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"}
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*//)(?!.*\\\\)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\u0000-\\u001f\\u007f-\\u009f]*[^/\\u0000-\\u001f\\u007f-\\u009f]$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reportBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_point", "tree_sha256"],
+      "properties": {
+        "entry_point": {"$ref": "#/$defs/path"},
+        "tree_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}

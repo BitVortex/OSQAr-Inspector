@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "osqar.inspector.coverage-map.v1",
+  "title": "OSQAr Inspector coverage mapping v1",
+  "$comment": "The Inspector runtime additionally enforces Unicode NFC because JSON Schema 2020-12 has no normalization keyword.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "report", "relations"],
+  "properties": {
+    "schema": {"const": "osqar.inspector.coverage-map.v1"},
+    "report": {"$ref": "#/$defs/reportBinding"},
+    "relations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/relation"}
+    }
+  },
+  "$defs": {
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*//)(?!.*\\\\)(?!.*(?:^|/)\\.{1,2}(?:/|$))[^\\u0000-\\u001f\\u007f-\\u009f]*[^/\\u0000-\\u001f\\u007f-\\u009f]$"
+    },
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reportBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_point", "tree_sha256"],
+      "properties": {
+        "entry_point": {"$ref": "#/$defs/path"},
+        "tree_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fragment", "line", "report_path", "source_path", "symbol"],
+      "properties": {
+        "fragment": {"type": ["string", "null"], "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+        "line": {"type": ["integer", "null"], "minimum": 1, "maximum": 9007199254740991},
+        "report_path": {"$ref": "#/$defs/path"},
+        "source_path": {"$ref": "#/$defs/path"},
+        "symbol": {"type": ["string", "null"], "minLength": 1, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"}
+      }
+    }
+  }
+}
