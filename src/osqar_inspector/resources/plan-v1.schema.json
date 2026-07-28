@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "osqar.inspector.plan.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "configuration", "snapshot", "stages", "edges", "diagnostics", "plan_digest"],
+  "properties": {
+    "schema": {"const": "osqar.inspector.plan.v1"},
+    "configuration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["controlled_input", "defaults", "overrides", "resolved", "schema"],
+      "properties": {
+        "controlled_input": {"$ref": "#/$defs/pathDigest"},
+        "defaults": {"$ref": "#/$defs/idDigest"},
+        "overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pointer", "value"],
+            "properties": {
+              "pointer": {"type": "string", "minLength": 1},
+              "value": {}
+            }
+          }
+        },
+        "resolved": {"$ref": "#/$defs/digest"},
+        "schema": {"$ref": "#/$defs/idDigest"}
+      }
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "source", "policy", "files", "snapshot_id"],
+      "properties": {
+        "schema": {"const": "osqar.inspector.snapshot.v1"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "object_format", "commit", "tree"],
+          "properties": {
+            "kind": {"const": "git-clean"},
+            "object_format": {"enum": ["sha1", "sha256"]},
+            "commit": {"type": "string", "pattern": "^[0-9a-f]+$"},
+            "tree": {"type": "string", "pattern": "^[0-9a-f]+$"}
+          }
+        },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["include", "exclude"],
+          "properties": {
+            "include": {"$ref": "#/$defs/paths"},
+            "exclude": {"$ref": "#/$defs/paths"}
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind", "mode", "size", "identity"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "kind": {"enum": ["file", "symlink"]},
+              "mode": {"enum": ["100644", "100755", "120000"]},
+              "size": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"},
+              "identity": {
+                "oneOf": [
+                  {"$ref": "#/$defs/fileIdentity"},
+                  {"$ref": "#/$defs/symlinkIdentity"}
+                ]
+              }
+            }
+          }
+        },
+        "snapshot_id": {"type": "string", "pattern": "^snapshot:sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "stages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "adapter", "dependencies", "policy", "capability", "workspace", "invocation", "expected_outputs"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "adapter": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["selector"],
+            "properties": {"selector": {"type": "string", "minLength": 1}}
+          },
+          "dependencies": {"$ref": "#/$defs/paths"},
+          "policy": {"enum": ["required", "optional"]},
+          "capability": {
+            "oneOf": [
+              {"type": "null"},
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["executable", "version_constraint", "status"],
+                "properties": {
+                  "executable": {"type": "string", "minLength": 1},
+                  "version_constraint": {"type": ["string", "null"]},
+                  "status": {"const": "unresolved"}
+                }
+              }
+            ]
+          },
+          "workspace": {"type": "string", "minLength": 1},
+          "invocation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["argv"],
+            "properties": {
+              "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+            }
+          },
+          "expected_outputs": {"$ref": "#/$defs/paths"}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to"],
+        "properties": {
+          "from": {"type": "string", "minLength": 1},
+          "to": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["blocking", "code", "message", "stage"],
+        "properties": {
+          "blocking": {"type": "boolean"},
+          "code": {"type": "string", "minLength": 1},
+          "message": {"type": "string", "minLength": 1},
+          "stage": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "idDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "pathDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "string", "pattern": "^(0|[1-9][0-9]*)$"}
+      }
+    },
+    "fileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "symlinkIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "target"],
+      "properties": {
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "target": {"type": "string", "minLength": 1}
+      }
+    },
+    "paths": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  }
+}

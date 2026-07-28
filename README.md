@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, and `osqar-inspector verify --bundle PATH` are implemented. `plan`, `build`, publication, producers, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, and `osqar-inspector verify --bundle PATH` are implemented. `build`, publication, producer execution, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -31,8 +31,11 @@ Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required for devel
 
 ```sh
 uv sync
+uv run osqar-inspector plan --project <path> --configuration <project-relative-file>
 uv run osqar-inspector verify --bundle <path>
 ```
+
+`plan` writes canonical `osqar.inspector.plan.v1` JSON to standard output. It resolves the strict configuration and clean-Git snapshot, calls only adapter declaration operations, records producer capabilities as unresolved, and returns nonzero when a required prerequisite is statically unsatisfied. Repeatable typed overrides use `--override 'JSON_POINTER=JSON_VALUE'` or `--override JSON_POINTER 'JSON_VALUE'`. Planning does not probe or execute producers, materialize a snapshot, create a workspace, or write project/output files.
 
 Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Verification parses listed `.html` payloads as UTF-8 after inventory, digest, checksum, and run-report validation; internal targets and fragments must resolve within the closed manifest inventory, while external references are not fetched. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error.
 
@@ -52,10 +55,9 @@ verify_materialized_snapshot(snapshot, workspace)
 
 The snapshot ID establishes only the recorded Git commit/tree, selection policy, and selected entry-byte binding. Snapshot v1 permits internal relative symlinks only when they resolve directly to a selected regular file. Its canonical manifest includes the Inspector version but excludes wall-clock capture time so repeated captures remain byte-identical. It does not establish source quality, review status, or suitability.
 
-The remaining Inspector commands are design targets, not implemented interfaces:
+The remaining Inspector build command is a design target, not an implemented interface:
 
 ```text
-osqar-inspector plan --project <path> --configuration <file>
 osqar-inspector build --project <path> --configuration <file>
 ```
 
