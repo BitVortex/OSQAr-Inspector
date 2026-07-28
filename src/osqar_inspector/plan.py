@@ -9,6 +9,7 @@ from typing import Any, Mapping, Protocol
 from .adapters import CapabilityRequirements, DeclarativeStagePlan, Diagnostic
 from .configuration import ResolvedConfiguration, canonical_json
 from .coverage_adapter import CoverageAdapter
+from .doxygen_adapter import DoxygenAdapter
 from .snapshot import GitSnapshot
 
 SCHEMA_ID = "osqar.inspector.plan.v1"
@@ -33,31 +34,9 @@ class ExecutionPlan:
     blocked: bool
 
 
-class DoxygenDeclaration:
-    def validate_declaration(
-        self, config: Mapping[str, Any]
-    ) -> tuple[tuple[Diagnostic, ...], CapabilityRequirements]:
-        return (), CapabilityRequirements("doxygen", ">=1.9")
-
-    def plan_declaration(
-        self, config: Mapping[str, Any], snapshot: GitSnapshot
-    ) -> DeclarativeStagePlan:
-        doxygen = config["doxygen"]
-        configuration = doxygen["configuration"]
-        return DeclarativeStagePlan(
-            stage="doxygen",
-            selector="builtin.doxygen.v1",
-            dependencies=("snapshot",),
-            required_inputs=(configuration,),
-            invocation=("{capability.executable}", f"{{snapshot.root}}/{configuration}"),
-            expected_outputs=(doxygen["output"],),
-            workspace="stages/doxygen",
-        )
-
-
 DEFAULT_ADAPTERS: Mapping[str, DeclarationAdapter] = {
     "coverage": CoverageAdapter(),
-    "doxygen": DoxygenDeclaration(),
+    "doxygen": DoxygenAdapter(),
 }
 
 

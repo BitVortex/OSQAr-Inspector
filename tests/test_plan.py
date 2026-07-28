@@ -72,7 +72,7 @@ def test_plan_is_byte_deterministic_and_contains_unresolved_capabilities() -> No
     }
     assert stage["invocation"]["argv"] == [
         "{capability.executable}",
-        "{snapshot.root}/Doxyfile",
+        "{workspace.root}/Doxyfile.inspector",
     ]
     assert stage["expected_outputs"] == ["build/doxygen"]
 

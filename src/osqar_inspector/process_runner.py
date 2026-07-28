@@ -129,6 +129,14 @@ class WorkspaceManager:
         self.base_directory = base
         self._owned_paths: set[Path] = set()
 
+    def owns(self, workspace: OwnedWorkspace) -> bool:
+        """Return whether ``workspace`` is a live directory created by this manager."""
+        try:
+            owned_path = workspace.path.resolve(strict=True)
+        except OSError:
+            return False
+        return workspace.path.is_dir() and owned_path in self._owned_paths
+
     @contextmanager
     def run(self) -> Iterator[RunWorkspace]:
         path = Path(tempfile.mkdtemp(prefix="osqar-inspector-run-", dir=self.base_directory))
@@ -276,6 +284,7 @@ class ProcessRunner:
         version_arguments: Sequence[str] = (),
         secrets: Iterable[str] = (),
         outputs: Sequence[OutputDeclaration] = (),
+        fresh_paths: Sequence[str] = (),
         accepted_exit_codes: frozenset[int] = frozenset({0}),
     ) -> ProcessResult:
         if not argv or any(not isinstance(argument, str) for argument in argv):
@@ -284,21 +293,23 @@ class ProcessRunner:
             raise ValueError("timeout must be positive")
         if not accepted_exit_codes:
             raise ValueError("at least one accepted exit code is required")
-        try:
-            owned_path = workspace.path.resolve(strict=True)
-        except OSError:
-            owned_path = workspace.path
-        if not workspace.path.is_dir() or owned_path not in self.workspaces._owned_paths:
+        if not self.workspaces.owns(workspace):
             raise ValueError("runner requires a live workspace owned by its manager")
 
         stdout_path = workspace.path / "stdout.log"
         stderr_path = workspace.path / "stderr.log"
         declared = tuple(outputs)
+        freshness_roots = tuple(fresh_paths)
+        for path in freshness_roots:
+            OutputDeclaration(path)
         protected = tuple(value for value in secrets if value)
         preexisting = {
-            declaration.path
-            for declaration in declared
-            if (workspace.path / declaration.path).exists()
+            path
+            for path in (
+                *(declaration.path for declaration in declared),
+                *freshness_roots,
+            )
+            if (workspace.path / path).exists()
         }
         executable = self._identity(
             argv[0], workspace, version_arguments, timeout_seconds
@@ -337,6 +348,12 @@ class ProcessRunner:
         if failure is None and exit_code not in accepted_exit_codes:
             failure = InternalFailure(
                 FailureKind.NONZERO_EXIT, f"unaccepted process exit status {exit_code}"
+            )
+        if failure is None and preexisting.intersection(freshness_roots):
+            stale = min(preexisting.intersection(freshness_roots))
+            failure = InternalFailure(
+                FailureKind.OUTPUT_STALE,
+                f"fresh output path existed before this invocation: {stale}",
             )
         if failure is None:
             for declaration in declared:
