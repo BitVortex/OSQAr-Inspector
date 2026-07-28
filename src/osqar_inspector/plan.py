@@ -8,6 +8,7 @@ from typing import Any, Mapping, Protocol
 
 from .adapters import CapabilityRequirements, DeclarativeStagePlan, Diagnostic
 from .configuration import ResolvedConfiguration, canonical_json
+from .coverage_adapter import CoverageAdapter
 from .snapshot import GitSnapshot
 
 SCHEMA_ID = "osqar.inspector.plan.v1"
@@ -54,45 +55,8 @@ class DoxygenDeclaration:
         )
 
 
-class CoverageDeclaration:
-    def validate_declaration(
-        self, config: Mapping[str, Any]
-    ) -> tuple[tuple[Diagnostic, ...], CapabilityRequirements]:
-        report = config["coverage"]["report"]
-        diagnostics = () if report is not None else (
-            Diagnostic(
-                "plan.coverage_report_required",
-                "enabled coverage ingestion requires coverage.report",
-            ),
-        )
-        return diagnostics, CapabilityRequirements(None)
-
-    def plan_declaration(
-        self, config: Mapping[str, Any], snapshot: GitSnapshot
-    ) -> DeclarativeStagePlan:
-        coverage = config["coverage"]
-        inputs = tuple(
-            value
-            for value in (
-                coverage["report"],
-                coverage["mapping"],
-                coverage["attestation"],
-            )
-            if value is not None
-        )
-        return DeclarativeStagePlan(
-            stage="coverage",
-            selector="builtin.coverage-ingest.v1",
-            dependencies=("snapshot",),
-            required_inputs=inputs,
-            invocation=("{inspector.executable}", "ingest-coverage"),
-            expected_outputs=("artifacts/coverage",),
-            workspace="stages/coverage",
-        )
-
-
 DEFAULT_ADAPTERS: Mapping[str, DeclarationAdapter] = {
-    "coverage": CoverageDeclaration(),
+    "coverage": CoverageAdapter(),
     "doxygen": DoxygenDeclaration(),
 }
 

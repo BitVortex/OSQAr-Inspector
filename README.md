@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
 
-> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, and `osqar-inspector verify --bundle PATH` are implemented. `build`, publication, producer execution, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, and `osqar-inspector verify --bundle PATH` are implemented. `build`, publication, coverage-producer execution, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -54,6 +54,18 @@ verify_materialized_snapshot(snapshot, workspace)
 ```
 
 The snapshot ID establishes only the recorded Git commit/tree, selection policy, and selected entry-byte binding. Snapshot v1 permits internal relative symlinks only when they resolve directly to a selected regular file. Its canonical manifest includes the Inspector version but excludes wall-clock capture time so repeated captures remain byte-identical. It does not establish source quality, review status, or suitability.
+
+Coverage ingestion is currently a library interface. It inventories the closed
+parent tree of the configured report entry point, preserves every report byte,
+retains exact mapping and attestation sidecar bytes as separate evidence
+artifacts, and emits deterministic artifact and explicit source-relation
+records. Sidecars must be independently configured outside the report tree; no
+mapping or provenance is inferred from report filenames. A valid mapping does
+not establish provenance. Only an independently configured
+attestation whose report, snapshot, and complete configuration-identity bindings all
+match produces `externally-attested`; otherwise provenance remains
+`unknown-origin`. This validation establishes internal binding consistency, not
+declarant authenticity or independent test reproduction.
 
 The remaining Inspector build command is a design target, not an implemented interface:
 

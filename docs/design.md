@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, deterministic side-effect-free `osqar.inspector.plan.v1` construction, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
+This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, deterministic side-effect-free `osqar.inspector.plan.v1` construction, byte-preserving pre-generated coverage-report ingestion with independent mapping and attestation validation as specified in Section 11, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
 
 ## 2. Command contract
 
@@ -247,19 +247,66 @@ Duplicate `(snapshot ID, refid)` records, missing artifact targets, or ambiguous
 
 ## 11. Coverage ingestion design
 
-Coverage uses two independent optional sidecars.
+Coverage ingestion reads a configured pre-generated report and never executes a
+coverage producer. `coverage.report` identifies the report entry point relative
+to the ingestion input root; its immediate parent is the closed report-tree
+root. The tree permits directories and regular files only. Every regular-file
+byte is read unchanged and recorded by normalized report-relative path, byte
+count, and SHA-256 digest. The entry point must name one inventoried regular
+file. A descriptor-based no-follow read and complete pre/post file-set and
+metadata comparison reject report-tree replacement, mutation, addition, or
+removal during ingestion.
+
+The report-tree digest is SHA-256 over RFC 8785 canonical JSON with exactly
+`entries`, `kind`, and `schema`; `kind` is `coverage-report-tree` and `schema`
+is `osqar.inspector.coverage-report-tree.v1`. `entries` contains exactly `path`,
+`sha256`, and canonical decimal-string `size` for every report file, sorted by
+unsigned UTF-8 path bytes. The entry point is bound separately by each sidecar
+and therefore does not alter the tree-byte digest. Sidecars are independent
+inputs and must reside outside the report-tree root.
+
+Coverage uses two independent optional, strict UTF-8 JSON sidecars. Their
+objects are closed; unknown or missing fields fail validation. The packaged
+JSON Schemas are `coverage-map-v1.schema.json` and
+`coverage-attestation-v1.schema.json`. Each configured sidecar is retained as
+an evidence artifact with its exact input bytes, normalized input-root-relative
+path, byte count, SHA-256 digest, sidecar kind, and deterministic artifact ID;
+parsing and validation do not replace those original bytes.
+
+The schemas express closed object shapes, path segment/control-character
+constraints, safe-integer bounds, and digest/identity syntax. Inspector also
+enforces Unicode NFC at runtime because JSON Schema 2020-12 has no Unicode
+normalization keyword; schema validation alone is therefore not the complete
+path-profile validation operation.
 
 ### Mapping sidecar
 
 Reserved schema: `osqar.inspector.coverage-map.v1`.
 
-It binds a report entry point and report-tree digest to source-relative paths and optional line/symbol relations. Without a valid mapping, the report remains navigable only at report level.
+It contains exactly `schema`, `report`, and `relations`. `report` contains the
+exact report-relative `entry_point` and `tree_sha256`. Each relation contains an
+exact `report_path`, exact selected-snapshot `source_path`, and nullable
+`fragment`, positive-integer `line`, and `symbol`. Duplicate relations, absent
+report targets, absent source targets, ambiguous source basenames, and escaping
+paths fail. No source or report path is inferred from a basename or report
+presentation. Without a configured valid mapping, the report remains navigable
+only at report level.
 
 ### Attestation sidecar
 
 Reserved schema: `osqar.inspector.coverage-attestation.v1`.
 
-It binds report-tree bytes to declared source snapshot, producer/configuration, test selection/result, instrumentation, and coverage-data identity. Structural and digest validation establishes internal consistency of the declaration, not authenticity or independent reproduction.
+It contains exactly `schema`, `report`, `snapshot_id`,
+`configuration_identity_sha256`, `producer`, `test_selection_identity`,
+`test_result_identity`, `instrumentation_identity`, and
+`coverage_data_identity`. `configuration_identity_sha256` covers the canonical
+complete configuration identity from Section 3. `producer` contains
+exactly `name` and `version`; `report` has the mapping-sidecar binding shape.
+An attestation upgrades provenance only when its report tree, source snapshot,
+and complete configuration-identity digest all match the current ingestion inputs.
+Structural and digest validation establishes internal binding consistency of
+the declaration, not declarant authenticity or independent reproduction of
+tests.
 
 ### Provenance states
 
@@ -267,7 +314,12 @@ It binds report-tree bytes to declared source snapshot, producer/configuration, 
 - `externally-attested` — an external declaration passes schema and digest checks but was not reproduced by this run;
 - `unknown-origin` — presentation input whose source/test/configuration identity is not established.
 
-Ingestion in the current run never upgrades origin provenance by itself.
+Pre-generated ingestion emits `externally-attested` only for a matching
+attestation and otherwise emits `unknown-origin`. Absence of an attestation can
+never produce `externally-attested`. `verified-current-snapshot` is reserved for
+a future stage that executes and validates a coverage producer in the current
+run; ingestion alone never emits it. Mapping validity and provenance are
+independent.
 
 ## 12. Artifact graph
 
