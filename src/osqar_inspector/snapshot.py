@@ -54,6 +54,7 @@ def _git(repo: Path, *args: str) -> bytes:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             check=False,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
         )
     except OSError as error:
         _fail("snapshot.git_unavailable", f"cannot execute Git: {error}")

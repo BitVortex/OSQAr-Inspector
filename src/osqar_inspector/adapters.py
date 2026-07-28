@@ -17,14 +17,19 @@ class Diagnostic:
 
 @dataclass(frozen=True)
 class CapabilityRequirements:
-    executable: str
+    executable: str | None
     version_constraint: str | None = None
 
 
 @dataclass(frozen=True)
 class DeclarativeStagePlan:
     stage: str
+    selector: str
+    dependencies: tuple[str, ...]
+    required_inputs: tuple[str, ...]
+    invocation: tuple[str, ...]
     expected_outputs: tuple[str, ...]
+    workspace: str
 
 
 @dataclass(frozen=True)
