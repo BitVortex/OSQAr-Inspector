@@ -157,7 +157,7 @@ Every run and stage receives an owned path outside the source project. Commands 
 
 ### Doxygen adapter
 
-The initial producer adapter generates configuration in its stage workspace and requests HTML plus XML and/or a tag file. Machine-readable output provides compound/member IDs, normalized source paths, declarations, pages, and anchors. Duplicate or ambiguous mappings fail ingestion; the adapter never guesses a Doxygen HTML filename.
+The initial producer adapter generates configuration in its stage workspace and requests HTML plus XML and/or a tag file. Machine-readable output provides compound/member IDs, normalized source paths, declarations, pages, and anchors. Duplicate native IDs, duplicate semantic source/name/page/anchor targets, and ambiguous mappings fail ingestion; the adapter never guesses a Doxygen HTML filename.
 
 ### Generic coverage adapter
 
@@ -169,7 +169,7 @@ Graph nodes represent snapshot, source files, symbols when known, producer artif
 
 ### Renderer
 
-The renderer creates only Inspector-owned integration pages. It links to byte-preserved producer artifacts and visibly presents succeeded, failed, blocked, skipped, and degraded stages plus provenance state. It does not rewrite Doxygen or coverage HTML.
+The renderer creates only Inspector-owned integration pages. Every represented target is visibly associated with its graph node ID. It validates producer digests and required fragments before rendering, after page publication, and at a terminal checkpoint after graph augmentation. A mutation observed by any checkpoint fails. The terminal checkpoint is the renderer's byte-consistency boundary: the library cannot prevent a caller or concurrent process from mutating path-addressed producer files after that checkpoint, including after return. Continuous immutability therefore requires the orchestrator to retain producer artifacts in an owned, mutation-excluded workspace and the bundle validator/publisher to revalidate the closed candidate before publication. The renderer links to byte-preserved producer artifacts and visibly presents succeeded, failed, blocked, skipped, and degraded stages plus provenance state. It does not rewrite Doxygen or coverage HTML.
 
 ### Bundle validator and publisher
 

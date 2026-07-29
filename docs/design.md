@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, deterministic side-effect-free `osqar.inspector.plan.v1` construction, byte-preserving pre-generated coverage-report ingestion with independent mapping and attestation validation as specified in Section 11, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
+This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, deterministic side-effect-free `osqar.inspector.plan.v1` construction, byte-preserving pre-generated coverage-report ingestion with independent mapping and attestation validation as specified in Section 11, the deterministic artifact graph and separately rendered navigation layer specified in Section 12, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
 
 ## 2. Command contract
 
@@ -348,6 +348,64 @@ Initial edge kinds:
 - `links-to`.
 
 Edges are created only from validated identities. Missing symbol identity may degrade to a valid file relation. Ambiguous basenames never create a relation.
+
+The graph is a closed canonical record. Nodes are sorted by `node_id`; edges are
+sorted by `edge_id`; duplicate records, missing endpoints, unknown kinds, and
+noncanonical order are rejected. Each node commits canonical JSON of exactly
+`{"identity": <kind-specific identity>, "kind": <node kind>}`. Its identifier is
+the node-kind prefix followed by `:sha256:` and the SHA-256 digest of those
+bytes (for example, `source-file:sha256:<digest>`). Each edge
+commits its kind, endpoints, and the complete locator profile (`relation_id`,
+`fragment`, `line`, and `symbol`); its identifier is derived in the same manner.
+The graph identifier commits the schema, snapshot identifier, and complete
+canonical node and edge records. Validation reconstructs all three identity
+levels rather than accepting retained digests.
+
+Node semantic fields are closed by kind. Snapshot nodes use only `label`;
+source nodes use `label`, `path`, and `sha256`; symbols use `label`, `path`, and
+`fragment`; API and coverage payloads additionally use only their declared
+`provenance`; stage results use only `label`, `sha256`, and `stage_status`;
+producer logs and rendered navigation use only `label`, `path`, and `sha256`.
+Every unlisted optional field is null. Labels equal their canonical path except
+for snapshot and stage-result labels. Doxygen symbol identities retain the
+adapter, entity kind, refid, qualified name, source path, optional positive
+line and column, API artifact ID, and HTML fragment; construction validates
+these primitive profiles before projection and rejects duplicate semantic
+targets even when their native refids differ. Kind-specific identities
+additionally commit their adapter-native identifiers and schemas where
+applicable. Producer
+logs commit stage and byte size; navigation commits base graph and byte size.
+Every `links-to` target is rendered with its exact node identifier on the source
+navigation page. Producer digest and fragment checks run before rendering, after
+page publication, and at a terminal checkpoint after graph augmentation. This
+is point-in-time validation of path-addressed inputs, not a filesystem lock:
+owned-workspace mutation exclusion and closed-bundle revalidation remain
+necessary through publication.
+
+Coverage identities commit the adapter schema, native artifact ID, payload
+path and digest, provenance, snapshot, report-tree digest, the report entry
+point, and whether that artifact is the entry point. Construction requires the
+reported entry-point path to identify exactly one artifact and requires that
+artifact alone to carry the entry-point flag. Validation derives the flag and
+`coverage-report` kind from the committed entry-point path, requires one report
+node and one report-tree digest, classifies other HTML payloads as
+`coverage-page` and other payloads as `coverage-summary`, and rejects all
+inconsistencies. Coverage relation edges alone carry relation metadata. Their
+native relation identifier is reconstructed from report artifact and path,
+snapshot, source path, symbol, line, and fragment; structural edges require all
+relation metadata to be null.
+
+Before graph construction, the supplied `GitSnapshot` is treated as caller-constructible input. Validation requires the closed `git-clean` source profile, matching SHA-1 or SHA-256 commit and tree grammar, closed and canonically ordered include/exclude paths, closed and canonically ordered file records, canonical file kinds/modes/sizes, lowercase SHA-256 content digests, exact path-to-byte content bindings, policy membership, and internal relative symlinks that resolve directly to selected regular files. It then reconstructs and matches the native snapshot manifest bytes and snapshot ID; a caller-provided snapshot label or internally self-consistent rehash is not a trust boundary. The graph then requires exactly one
+snapshot node. Each represented coverage report
+requires exactly one coverage-report node. Relations and structural edges are
+unique by their complete canonical records. A producer payload may be supplied
+without a stage-result node when it was independently normalized by its
+adapter; if the corresponding stage result is present, payload attribution is
+accepted only for `succeeded`. Producer logs may represent any executed stage
+status and are linked by `has-log` to their matching stage result. Adapter and
+stage identities are reconstructed in every case. These checks establish
+deterministic structural and byte-integrity consistency; they do not
+authenticate a graph or establish the adequacy of the represented evidence.
 
 ## 13. Run report
 
