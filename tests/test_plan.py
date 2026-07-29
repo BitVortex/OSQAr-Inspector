@@ -75,6 +75,8 @@ def test_plan_is_byte_deterministic_and_contains_unresolved_capabilities() -> No
         "{workspace.root}/Doxyfile.inspector",
     ]
     assert stage["expected_outputs"] == ["build/doxygen"]
+    assert stage["required_inputs"] == ["Doxyfile"]
+    assert stage["adapter_options"] == {"warnings_as_errors": False}
 
 
 def test_static_required_prerequisite_blocks_plan() -> None:
@@ -122,3 +124,6 @@ def test_plan_contract_has_a_shipped_closed_schema() -> None:
     }
     assert schema["$defs"]["fileIdentity"]["additionalProperties"] is False
     assert schema["$defs"]["symlinkIdentity"]["additionalProperties"] is False
+    stage_schema = schema["properties"]["stages"]["items"]
+    assert "required_inputs" in stage_schema["required"]
+    assert "required_inputs" in stage_schema["properties"]

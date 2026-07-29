@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 import osqar_inspector.coverage_adapter as coverage_module
+from osqar_inspector.adapters import Capability
 from osqar_inspector.configuration import canonical_json
 from osqar_inspector.coverage_adapter import (
     CoverageAdapter,
@@ -15,7 +16,6 @@ from osqar_inspector.coverage_adapter import (
     CoverageProvenance,
 )
 from osqar_inspector.snapshot import GitSnapshot
-
 
 CONFIGURATION_IDENTITY = {
     "controlled_input": {"path": "inspector.json", "sha256": "a" * 64, "size": "1"},
@@ -116,6 +116,15 @@ def _attestation(
             "coverage_data_identity": "coverage-data:sha256:" + "3" * 64,
         }
     )
+
+
+def test_runtime_capability_enforces_declared_minimum_python_version() -> None:
+    adapter = CoverageAdapter()
+
+    assert adapter.validate_capability({}, Capability("/python", "Python 3.11.0")) == ()
+    for version in ("Python 3.10.14", "not-python", ""):
+        diagnostics = adapter.validate_capability({}, Capability("/python", version))
+        assert diagnostics[0].code == "coverage.capability_incompatible"
 
 
 def test_report_with_valid_mapping_and_attestation_is_ingested(tmp_path: Path) -> None:

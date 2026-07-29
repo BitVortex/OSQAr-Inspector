@@ -18,7 +18,6 @@ from osqar_inspector.process_runner import (
     WorkspaceManager,
 )
 
-
 SNAPSHOT_ID = "snapshot:sha256:" + "a" * 64
 
 
@@ -147,6 +146,30 @@ def test_fake_doxygen_emits_valid_artifacts_and_mappings(tmp_path: Path) -> None
     assert all(mapping.snapshot_id == SNAPSHOT_ID for mapping in result.mappings)
 
 
+def test_declarative_adapter_binds_to_orchestrator_runtime(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    snapshot_root = tmp_path / "snapshot"
+    snapshot_root.mkdir()
+    manager = WorkspaceManager(project, base_directory=tmp_path / "owned")
+    declaration_adapter = DoxygenAdapter(executable="controlled-doxygen", timeout_seconds=7)
+
+    runtime_adapter = declaration_adapter.bind_runtime(
+        workspaces=manager,
+        snapshot_root=snapshot_root,
+        selected_paths=("Doxyfile", "src/sample.c"),
+    )
+
+    assert runtime_adapter is not declaration_adapter
+    assert runtime_adapter.runner is not None
+    assert runtime_adapter.runner.workspaces is manager
+    assert runtime_adapter.snapshot_root == snapshot_root
+    assert runtime_adapter.selected_paths == frozenset({"Doxyfile", "src/sample.c"})
+    assert runtime_adapter.executable == "controlled-doxygen"
+    assert runtime_adapter.timeout_seconds == 7
+    assert declaration_adapter.runner is None
+
+
 def test_declaration_is_pure_and_generated_config_enforces_resolved_policy(
     tmp_path: Path,
 ) -> None:
@@ -214,9 +237,8 @@ def test_declaration_is_pure_and_generated_config_enforces_resolved_policy(
 def test_missing_incompatible_timeout_and_nonzero_are_typed(tmp_path: Path) -> None:
     missing, missing_manager = _adapter(tmp_path / "missing-case", tmp_path / "absent")
     config = {"doxygen": {"configuration": "Doxyfile", "output": "build/doxygen", "warnings_as_errors": False}}
-    with missing_manager.run() as run:
-        with pytest.raises(DoxygenAdapterError) as caught:
-            missing.probe(config, run.probe("doxygen"))
+    with missing_manager.run() as run, pytest.raises(DoxygenAdapterError) as caught:
+        missing.probe(config, run.probe("doxygen"))
     assert caught.value.code == "doxygen.capability_missing"
 
     incompatible_executable = _producer(tmp_path, version="1.8.20", mode="old")

@@ -35,6 +35,8 @@ class ResolvedConfiguration:
     defaults: dict[str, Any]
     defaults_bytes: bytes
     schema_bytes: bytes
+    controlled_bytes: bytes
+    controlled_path: str
 
 
 def _fail(code: str, message: str) -> NoReturn:
@@ -329,6 +331,8 @@ def _resolve_configuration(
         defaults=defaults,
         defaults_bytes=canonical_json(defaults),
         schema_bytes=schema_bytes,
+        controlled_bytes=controlled_bytes,
+        controlled_path=controlled_path,
     )
 
 

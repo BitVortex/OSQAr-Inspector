@@ -75,13 +75,16 @@ def create_stage_result(
     policy: StagePolicy,
     snapshot_id: str,
     process: ProcessResult,
+    status_override: StageStatus | None = None,
 ) -> StageResult:
     """Project process evidence into a deterministic mechanical stage identity."""
-    status = (
+    status = status_override or (
         StageStatus.SUCCEEDED
         if process.status is ProcessStatus.SUCCEEDED
         else StageStatus.FAILED
     )
+    if status_override not in {None, StageStatus.DEGRADED}:
+        raise ValueError("process-backed status override must be degraded")
     identity = {
         "adapter": adapter,
         "executable": {

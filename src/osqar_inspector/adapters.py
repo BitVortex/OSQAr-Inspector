@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
-from .process_runner import OwnedWorkspace, ProcessResult
+from .process_runner import OutputDeclaration, OwnedWorkspace, ProcessResult
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,7 @@ class DeclarativeStagePlan:
     invocation: tuple[str, ...]
     expected_outputs: tuple[str, ...]
     workspace: str
+    adapter_options: tuple[tuple[str, bool], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,7 @@ class Capability:
 class CommandPlan:
     argv: tuple[str, ...]
     accepted_exit_codes: frozenset[int] = frozenset({0})
+    outputs: tuple[OutputDeclaration, ...] = ()
 
 
 class ProducerAdapter(ABC):
