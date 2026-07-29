@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Closed-bundle verifier for OSQAr Inspector"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "cryptography>=45,<47",
+]
 
 [project.scripts]
 osqar-inspector = "osqar_inspector.cli:main"

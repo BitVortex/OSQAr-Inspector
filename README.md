@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, generates deterministic closed bundles from finalized candidates, independently validates bundle inventory, payload digests, run reports, internal links, and identity, and publishes immutable Linux releases through an atomic-pointer durability protocol with explicit filesystem assumptions of use.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, generates deterministic closed bundles from finalized candidates, independently validates bundle inventory, payload digests, run reports, internal links, and identity, applies caller-trusted detached Ed25519 signatures to exact bundle and statement bindings, and publishes immutable Linux releases through an atomic-pointer durability protocol with explicit filesystem assumptions of use.
 
-> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, deterministic bundle generation, independent bundle verification, the Linux `osqar.inspector.publication-result.v1` protocol, and the public `build` command are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. Coverage-producer execution, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, deterministic bundle generation, independent bundle verification, `osqar.inspector.detached-signature.v1`, the Linux `osqar.inspector.publication-result.v1` protocol, and the public `build` command are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. Coverage-producer execution and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -23,6 +23,7 @@ An eventual mechanical inspection result will describe only the configured stage
 
 - [Architecture](docs/architecture.md) — system context, layers, components, pipeline, invariants, and failure model.
 - [Design contracts](docs/design.md) — command, configuration, identity, adapter, graph, bundle, and publication contracts.
+- [Detached signatures](docs/signatures.md) — canonical Ed25519 envelope, exact signed bytes, caller-supplied trust, typed results, and interoperability vector.
 - [Integration with OSQAr](docs/osqar-integration.md) — responsibility split, process boundary, identity binding, evidence-state mapping, and packaging flow.
 
 ## Quick start
@@ -52,6 +53,28 @@ print(generated.bundle_id)
 ```
 
 The destination must not already exist. Generation accepts only a candidate whose required-stage policy is satisfied, writes the exact immutable payload inventory plus canonical `manifest.json` and `checksums.sha256`, and calls the independent filesystem verifier before returning. The returned bundle ID must equal the generator's expected ID. Closure establishes exact inventory and digest consistency only; it does not establish artifact authenticity, substantive adequacy, approval, or qualification.
+
+Detached signing remains outside the bundle and is available through the library interface:
+
+```python
+from osqar_inspector.signatures import sign_bundle, verify_detached_signature
+
+signed = sign_bundle(
+    bundle_root,
+    private_key,
+    key_id="release-key-2026",
+    statement_type="example.review.v1",
+    payload=statement_bytes,
+)
+result = verify_detached_signature(
+    bundle_root,
+    signed.envelope_bytes,
+    statement_bytes,
+    trust_anchors={"release-key-2026": trusted_public_key_bytes},
+)
+```
+
+The v1 profile signs canonical envelope bytes using Ed25519 and binds the exact verified bundle ID, `manifest.json` digest, `checksums.sha256` digest, statement type, and statement-payload digest. Trust comes only from the caller-supplied key mapping; an embedded key can produce only `untrusted_key`. See [Detached signatures](docs/signatures.md) for the exact byte contract, typed results, and fixed interoperability vector. Cryptographic verification does not establish signer authority, statement truth, approval, or project acceptance.
 
 Clean-Git snapshot capture underpins the implemented `build` command and remains independently callable as a library interface:
 
