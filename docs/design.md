@@ -540,9 +540,24 @@ The Linux publisher uses one filesystem and immutable releases:
 10. atomically replace the publication-root `current` entry with that temporary symlink; and
 11. flush the publication-root directory before reporting durable success.
 
-Temporary names are invocation-unique, must not exist before exclusive creation, and do not contribute to bundle identity.
+Temporary names are invocation-unique, must not exist before exclusive creation, and do not contribute to bundle identity. The advisory `.publication.lock` serializes cooperating publishers and startup reconciliation; its contents carry no persistent publication state. Idempotent initialization of this lock and the empty `releases/` directory is permitted when a candidate is rejected as `not-attempted`. An unlock or descriptor-close error after a closed publication result has already been computed does not rewrite that result's commit state; the result retains its established state and identities and adds a lock-teardown diagnostic.
 
-Pointer replacement is the observable commit point. Failures after pointer replacement but before final directory sync are `commit-indeterminate`, not ordinary failure or success. Startup recovery verifies the exact old or new pointed release before another publication.
+`current` is the sole observable commit object. Same-filesystem replacement is atomic under the Linux [`rename(2)`](https://man7.org/linux/man-pages/man2/rename.2.html) contract. Failures after replacement starts but before the publication-root directory synchronization completes are `commit-indeterminate`, not ordinary failure or success. Startup reconciliation serializes under the publication lock, synchronizes the publication root, and verifies whichever exact immutable release `current` names. It does not attribute that state to an interrupted invocation. Unpointed immutable releases are not published and are harmless cleanup residue.
+
+### Linux filesystem assumptions of use
+
+The durability claim applies only while all of these assumptions hold:
+
+- the publication root is on a local Linux filesystem that supports symbolic links, advisory locking, atomic same-filesystem replacement, regular-file synchronization, and directory synchronization;
+- the publication root, `releases/`, every candidate, and every release member share one mounted filesystem; the publisher checks device identity recursively for candidate and selected-release content;
+- successful `fsync` is assumed to provide the persistence semantics documented by the kernel, filesystem, mount configuration, and storage stack; the storage device is assumed to honor flush requests and not acknowledge volatile data as stable;
+- after a crash, filesystem recovery leaves `current` naming either the complete old target or the complete new target; the selected release is independently verified before use;
+- only Inspector instances cooperating through `.publication.lock` mutate the publication root; and
+- NFS, CIFS, FUSE, overlay filesystems, other network or synthetic filesystems, and storage configurations without established file and directory synchronization semantics are excluded unless separately assessed.
+
+The Linux [`fsync(2)`](https://man7.org/linux/man-pages/man2/fsync.2.html) contract requires explicit synchronization of the containing directory to persist a directory entry. The publisher therefore synchronizes candidate files and directories, `releases/`, and the publication root at the corresponding boundaries.
+
+Any unexpected write, rename, unlink, file-synchronization, or directory-synchronization error means that the filesystem assumption is no longer established. The caller shall stop automatic retries, retain the diagnostic, inspect filesystem and device health, and explicitly reconcile or reinitialize the publication root before resuming. Because this protocol deliberately stores no journal or persistent blocker, a later process cannot prove that this external operator action occurred: starting another build is the operator's assertion that the AoU has been re-established, and startup reconciliation validates the observable publication state but does not assess storage-device health. The publisher does not claim autonomous durable recovery after the storage system rejects persistence operations. A legacy `.recovery-*.json` record from the superseded journal protocol also requires operator inspection and is never deleted automatically.
 
 ### Publication result and state machine
 
@@ -550,17 +565,15 @@ Reserved schema: `osqar.inspector.publication-result.v1`. This result is an exte
 
 The publication state is exactly one of:
 
-- `not-attempted` — stage or candidate validation prevented publication;
+- `not-attempted` — stage or candidate validation prevented candidate materialization; idempotent lock and empty release-directory initialization may have occurred;
 - `definite-pre-commit-failure` — the operation failed before pointer replacement and the previous `current` target is unchanged;
-- `commit-indeterminate` — pointer replacement occurred or may be visible, but publication-root durability was not established;
-- `durable-success` — pointer replacement and the final publication-root flush completed;
-- `recovered-durable-success` — recovery verified the intended exact release as `current` and durably synchronized the root;
-- `recovered-no-commit` — recovery verified the previous exact release as `current`; the candidate or unpointed release is not treated as published; or
-- `recovery-blocked` — recovery could not establish one exact valid old or intended target.
+- `commit-indeterminate` — pointer replacement occurred or may be visible, but publication-root durability was not established and the filesystem AoU must be re-established before retry;
+- `durable-success` — pointer replacement, publication-root synchronization, and exact selected-release verification completed;
+- `recovered-durable-success` — explicit reconciliation synchronized the root and verified the exact release currently selected by `current`, without attributing it to an interrupted invocation;
+- `recovered-no-commit` — explicit reconciliation found no `current` commit object; or
+- `recovery-blocked` — startup or explicit reconciliation could not establish one exact valid selected release, encountered a persistence error, or found a legacy recovery record requiring operator inspection.
 
-Before pointer replacement, the publisher durably records an invocation-unique recovery record outside every release containing the old target, intended target, bundle ID, and run-report digest. It removes that record only after durable success and a synchronized removal. Recovery validates the pointer and exact pointed bundle against this record; it never infers success from an unpointed release directory.
-
-The build exit mapping is exact: `0` for `durable-success` or `recovered-durable-success`, `10` for `not-attempted`, `11` for `definite-pre-commit-failure`, `12` for `commit-indeterminate`, `13` for `recovered-no-commit`, and `14` for `recovery-blocked`. No new publication starts while an indeterminate recovery record remains unresolved. Fault-injection tests cover each file flush, directory flush, release rename, recovery-record write/removal, pointer replacement, and final root flush boundary.
+The build exit mapping remains exact: `0` for `durable-success` or `recovered-durable-success`, `10` for `not-attempted`, `11` for `definite-pre-commit-failure`, `12` for `commit-indeterminate`, `13` for `recovered-no-commit`, and `14` for `recovery-blocked`. Routine build startup reconciles `current` and continues to a new build when reconciliation succeeds. Fault-injection tests cover every candidate file and directory synchronization, release rename, `releases/` synchronization, temporary-pointer creation, pointer replacement, and publication-root synchronization boundary.
 
 ## 16. OSQAr handoff contract
 

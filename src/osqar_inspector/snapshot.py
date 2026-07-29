@@ -8,10 +8,11 @@ import posixpath
 import stat
 import subprocess
 import unicodedata
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path, PurePosixPath
-from typing import Any, NoReturn, Sequence
+from typing import Any, NoReturn
 
 from .configuration import canonical_json
 
@@ -100,10 +101,21 @@ def _selected(path: str, include: tuple[str, ...], exclude: tuple[str, ...]) -> 
     return included and not any(contains(root, path) for root in exclude)
 
 
-def _require_clean(repo: Path) -> None:
+def _require_clean(repo: Path, allowed_untracked: tuple[str, ...] = ()) -> None:
     if _git(repo, "ls-files", "--unmerged", "-z"):
         _fail("snapshot.unmerged_worktree", "Git index contains unmerged entries")
-    if _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all"):
+    status = _git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+    for record in status.split(b"\0"):
+        if not record:
+            continue
+        if record.startswith(b"?? "):
+            path = record[3:]
+            if any(
+                path == root.encode("utf-8")
+                or path.startswith(root.encode("utf-8") + b"/")
+                for root in allowed_untracked
+            ):
+                continue
         _fail("snapshot.dirty_worktree", "Git worktree has tracked or untracked changes")
 
 
@@ -146,13 +158,15 @@ def capture_git_snapshot(
     *,
     include: Sequence[str] = (),
     exclude: Sequence[str] = (),
+    allowed_untracked: Sequence[str] = (),
 ) -> GitSnapshot:
-    """Capture selected bytes from a clean ``HEAD`` using Git objects only."""
+    """Capture selected ``HEAD`` bytes after rejecting tracked and unowned changes."""
 
     repo = Path(project)
     normalized_include = _policy(include, "include")
     normalized_exclude = _policy(exclude, "exclude")
-    _require_clean(repo)
+    normalized_allowed_untracked = _policy(allowed_untracked, "allowed_untracked")
+    _require_clean(repo, normalized_allowed_untracked)
     commit = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").decode("ascii").strip()
     tree = _git(repo, "rev-parse", "--verify", f"{commit}^{{tree}}").decode("ascii").strip()
     object_format = _git(repo, "rev-parse", "--show-object-format").decode("ascii").strip()
@@ -230,7 +244,7 @@ def capture_git_snapshot(
         "snapshot_id": snapshot_id,
         "metadata": {"inspector_version": package_version("osqar-inspector")},
     }
-    _require_clean(repo)
+    _require_clean(repo, normalized_allowed_untracked)
     final_commit = _git(repo, "rev-parse", "--verify", "HEAD^{commit}").decode("ascii").strip()
     final_tree = _git(repo, "rev-parse", "--verify", f"{final_commit}^{{tree}}").decode("ascii").strip()
     if final_commit != commit or final_tree != tree:
