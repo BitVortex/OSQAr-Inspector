@@ -708,6 +708,8 @@ def test_payload_verification_only_byte_reads_identity_files(
         "checksums.sha256",
         "reports/run.json",
         "index.html",
+        "manifest.json",
+        "checksums.sha256",
     ]
 
 
