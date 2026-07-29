@@ -405,7 +405,7 @@ def _validate_plan_bindings(
 
 @dataclass(frozen=True)
 class CandidateInput:
-    """Closed application output awaiting a future bundle generator."""
+    """Closed application output accepted by the bundle generator."""
 
     stage_results: tuple[StageResult, ...]
     graph: ArtifactGraph

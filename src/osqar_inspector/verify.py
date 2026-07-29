@@ -634,6 +634,19 @@ def verify_bundle(root: Path) -> str:
     _validate_run_report(run_report_bytes)
     _validate_links(root, set(paths), expectations)
 
+    if _read_regular(root, "manifest.json") != manifest_bytes:
+        _fail(
+            "manifest.changed",
+            "manifest.json changed during bundle verification",
+            "manifest.json",
+        )
+    if _read_regular(root, "checksums.sha256") != checksum_bytes:
+        _fail(
+            "checksums.changed",
+            "checksums.sha256 changed during bundle verification",
+            "checksums.sha256",
+        )
+
     for path, digest, size in entries:
         final_size, final_digest = _hash_regular(root, path)
         if str(final_size) != size:
@@ -641,6 +654,28 @@ def verify_bundle(root: Path) -> str:
         if final_digest != digest:
             _fail("payload.hash_mismatch", "payload hash does not match manifest", path)
 
+    final_files, final_directories = _inventory(root)
+    final_missing = sorted(expected_files - final_files, key=str.encode)
+    if final_missing:
+        _fail(
+            "inventory.missing_file",
+            "expected bundle file disappeared during verification",
+            final_missing[0],
+        )
+    final_extra = sorted(final_files - expected_files, key=str.encode)
+    if final_extra:
+        _fail(
+            "inventory.extra_file",
+            "unlisted bundle file appeared during verification",
+            final_extra[0],
+        )
+    final_additional = sorted(final_directories - implicit_directories, key=str.encode)
+    if final_additional:
+        _fail(
+            "inventory.extra_directory",
+            "empty or additional directory appeared during verification",
+            final_additional[0],
+        )
     identity = {
         "identity": {
             "checksums_sha256": _sha256(checksum_bytes),

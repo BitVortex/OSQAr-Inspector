@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, and independently validates the inventory, payload digests, run report, internal links, and deterministic identity of an existing closed inspection bundle.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, generates deterministic closed bundles from finalized candidates, and independently validates bundle inventory, payload digests, run reports, internal links, and identity.
 
-> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, and `osqar-inspector verify --bundle PATH` are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. CLI-level `build`, publication, coverage-producer execution, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, library-level deterministic bundle generation, and `osqar-inspector verify --bundle PATH` are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. CLI-level `build`, publication, coverage-producer execution, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -38,6 +38,17 @@ uv run osqar-inspector verify --bundle <path>
 `plan` writes canonical `osqar.inspector.plan.v1` JSON to standard output. It resolves the strict configuration and clean-Git snapshot, calls only adapter declaration operations, records producer capabilities as unresolved, and returns nonzero when a required prerequisite is statically unsatisfied. Repeatable typed overrides use `--override 'JSON_POINTER=JSON_VALUE'` or `--override JSON_POINTER 'JSON_VALUE'`. Planning does not probe or execute producers, materialize a snapshot, create a workspace, or write project/output files.
 
 Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Verification parses listed `.html` payloads as UTF-8 after inventory, digest, checksum, and run-report validation; internal targets and fragments must resolve within the closed manifest inventory, while external references are not fetched. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error.
+
+Finalized orchestrator output is closed through the library interface:
+
+```python
+from osqar_inspector.bundle_generation import generate_bundle
+
+generated = generate_bundle(candidate, destination)
+print(generated.bundle_id)
+```
+
+The destination must not already exist. Generation accepts only a candidate whose required-stage policy is satisfied, writes the exact immutable payload inventory plus canonical `manifest.json` and `checksums.sha256`, and calls the independent filesystem verifier before returning. The returned bundle ID must equal the generator's expected ID. Closure establishes exact inventory and digest consistency only; it does not establish artifact authenticity, substantive adequacy, approval, or qualification.
 
 Clean-Git snapshot capture is currently a library interface used by the future `build` command:
 
