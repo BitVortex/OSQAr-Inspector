@@ -1,8 +1,8 @@
 # OSQAr Inspector
 
-**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, generates deterministic closed bundles from finalized candidates, and independently validates bundle inventory, payload digests, run reports, internal links, and identity.
+**OSQAr Inspector** is a companion tool for acquiring and structuring implementation evidence for OSQAr workflows. The implemented foundation resolves strict, reproducibly identified configuration, captures and materializes immutable clean-Git snapshots, emits deterministic side-effect-free execution plans, executes Doxygen through an owned-workspace adapter with validated source/API mappings, ingests byte-preserved pre-generated coverage reports with independent mapping and attestation validation, builds a deterministic typed artifact graph, renders byte-preserving Inspector-owned navigation, generates deterministic closed bundles from finalized candidates, independently validates bundle inventory, payload digests, run reports, internal links, and identity, and publishes immutable Linux releases through an atomic-pointer durability protocol with explicit filesystem assumptions of use.
 
-> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, library-level deterministic bundle generation, and `osqar-inspector verify --bundle PATH` are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. CLI-level `build`, publication, coverage-producer execution, signatures, and OSQAr integration remain design targets.
+> **Project status:** `osqar.inspector.config.v1` resolution, `osqar.inspector.snapshot.v1` clean-Git capture/materialization, `osqar.inspector.plan.v1`, the library-level `builtin.doxygen.v1` producer adapter, generic pre-generated coverage ingestion with `osqar.inspector.coverage-map.v1` and `osqar.inspector.coverage-attestation.v1`, `osqar.inspector.artifact-graph.v1`, Inspector-owned navigation rendering, deterministic bundle generation, independent bundle verification, the Linux `osqar.inspector.publication-result.v1` protocol, and the public `build` command are implemented. The graph and navigation expose mechanically validated identities, relationships, stage states, and provenance states; they do not review or approve linked artifacts. Coverage-producer execution, signatures, and OSQAr integration remain design targets.
 
 ## Purpose
 
@@ -32,6 +32,7 @@ Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required for devel
 ```sh
 uv sync
 uv run osqar-inspector plan --project <path> --configuration <project-relative-file>
+uv run osqar-inspector build --project <path> --configuration <project-relative-file>
 uv run osqar-inspector verify --bundle <path>
 ```
 
@@ -39,7 +40,9 @@ uv run osqar-inspector verify --bundle <path>
 
 Successful verification writes deterministic JSON containing `valid: true` and the recomputed `bundle_id` to standard output. Verification parses listed `.html` payloads as UTF-8 after inventory, digest, checksum, and run-report validation; internal targets and fragments must resolve within the closed manifest inventory, while external references are not fetched. Failure exits nonzero and writes deterministic JSON containing `valid: false` and a typed diagnostic to standard error.
 
-Finalized orchestrator output is closed through the library interface:
+The `build` command resolves the same controlled configuration and snapshot, executes enabled built-in stages through owned workspaces, closes and independently verifies a bundle, and then publishes it beneath `publication.destination`. It writes canonical `osqar.inspector.publication-result.v1` JSON to standard output. Exit zero is limited to `durable-success` and `recovered-durable-success`; exit codes 10–14 represent the other closed publication/reconciliation states. On startup, the command serializes under the publication lock, synchronizes the root, and independently verifies whichever immutable release the sole `current` commit pointer names. The durability claim assumes a qualified local Linux filesystem with atomic same-filesystem replacement and working file/directory `fsync`; network and synthetic filesystems require separate assessment. After any unexpected storage or synchronization error, automatic retry is prohibited until the operator has re-established those assumptions. The journal-free protocol cannot prove that external action across process invocations: starting another build asserts that the operator has restored the AoU, while startup reconciliation checks only the observable publication state and not device health. Publication success records Linux filesystem placement and durability only; it does not establish review, authorization, evidence adequacy, qualification, certification, compliance, or fitness.
+
+Finalized orchestrator output can also be closed through the library interface:
 
 ```python
 from osqar_inspector.bundle_generation import generate_bundle
@@ -50,7 +53,7 @@ print(generated.bundle_id)
 
 The destination must not already exist. Generation accepts only a candidate whose required-stage policy is satisfied, writes the exact immutable payload inventory plus canonical `manifest.json` and `checksums.sha256`, and calls the independent filesystem verifier before returning. The returned bundle ID must equal the generator's expected ID. Closure establishes exact inventory and digest consistency only; it does not establish artifact authenticity, substantive adequacy, approval, or qualification.
 
-Clean-Git snapshot capture is currently a library interface used by the future `build` command:
+Clean-Git snapshot capture underpins the implemented `build` command and remains independently callable as a library interface:
 
 ```python
 from osqar_inspector.snapshot import (
@@ -78,7 +81,7 @@ match produces `externally-attested`; otherwise provenance remains
 `unknown-origin`. This validation establishes internal binding consistency, not
 declarant authenticity or independent test reproduction.
 
-The remaining Inspector build command is a design target, not an implemented interface:
+The Inspector build command is implemented as:
 
 ```text
 osqar-inspector build --project <path> --configuration <file>

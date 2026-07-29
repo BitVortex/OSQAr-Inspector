@@ -5,12 +5,26 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
+import stat
 import sys
+from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
-from typing import Sequence
 
 from .configuration import ConfigurationError, parse_json, resolve_configuration
+from .coverage_adapter import CoverageAdapter
+from .doxygen_adapter import DoxygenAdapter
+from .orchestrator import OrchestrationError, create_candidate
 from .plan import create_plan
+from .process_runner import WorkspaceManager
+from .publication import (
+    LinuxPublicationOperations,
+    PublicationDiagnostic,
+    PublicationResult,
+    PublicationState,
+    publish_candidate,
+    recover_publication_if_present,
+)
 from .snapshot import SnapshotError, capture_git_snapshot
 from .verify import VerificationError, verify_bundle
 
@@ -78,6 +92,118 @@ def _run_plan(args: argparse.Namespace) -> int:
     return 1 if plan.blocked else 0
 
 
+def _inspect_publication_root(project: Path, relative: str) -> Path | None:
+    """Return an existing safe publication root without creating snapshot-visible paths."""
+
+    root = project.resolve(strict=True)
+    project_info = root.lstat()
+    current = root
+    for part in PurePosixPath(relative).parts:
+        candidate = current / part
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISDIR(info.st_mode):
+            raise OSError(
+                "publication destination contains a non-directory or symbolic-link component"
+            )
+        if info.st_dev != project_info.st_dev:
+            raise OSError("publication destination crosses a filesystem boundary")
+        current = candidate
+    return current
+
+
+def _prepare_publication_root(project: Path, relative: str) -> Path:
+    """Create a project-relative publication root without following symlink components."""
+
+    root = project.resolve(strict=True)
+    project_info = root.lstat()
+    current = root
+    operations = LinuxPublicationOperations()
+    for part in PurePosixPath(relative).parts:
+        candidate = current / part
+        try:
+            info = candidate.lstat()
+        except FileNotFoundError:
+            try:
+                candidate.mkdir()
+            except FileExistsError:
+                pass
+            info = candidate.lstat()
+            operations.fsync_directory(current)
+        if not stat.S_ISDIR(info.st_mode):
+            raise OSError(
+                "publication destination contains a non-directory or symbolic-link component"
+            )
+        if info.st_dev != project_info.st_dev:
+            raise OSError("publication destination crosses a filesystem boundary")
+        current = candidate
+    return current
+
+
+def _not_attempted(run_id: str, code: str, message: str) -> PublicationResult:
+    return PublicationResult(
+        run_id,
+        PublicationState.NOT_ATTEMPTED,
+        None,
+        None,
+        "reports/run.json",
+        None,
+        None,
+        None,
+        (PublicationDiagnostic(code, message),),
+    )
+
+
+def _run_build(args: argparse.Namespace) -> int:
+    run_id = args.run_id or f"run-{secrets.token_hex(16)}"
+    try:
+        project = Path(args.project).resolve(strict=True)
+        configuration_path = _project_file(project, args.configuration)
+        configuration = resolve_configuration(
+            configuration_path.read_bytes(),
+            args.configuration,
+            _overrides(args.override),
+        )
+        publication_relative = configuration.value["publication"]["destination"]
+        existing_publication = _inspect_publication_root(project, publication_relative)
+        if existing_publication is not None:
+            recovered = recover_publication_if_present(existing_publication)
+            if recovered is not None:
+                sys.stdout.buffer.write(recovered.canonical_bytes + b"\n")
+                return recovered.exit_code
+        policy = configuration.value["project"]
+        snapshot = capture_git_snapshot(
+            project,
+            include=policy["include"],
+            exclude=policy["exclude"],
+            allowed_untracked=(publication_relative,),
+        )
+        stage_policy = configuration.value["stages"]
+        adapters = {}
+        if stage_policy["doxygen"]["enabled"]:
+            adapters["doxygen"] = DoxygenAdapter()
+        if stage_policy["coverage"]["enabled"]:
+            adapters["coverage"] = CoverageAdapter()
+        plan = create_plan(configuration, snapshot, adapters)
+        candidate = create_candidate(
+            configuration,
+            snapshot,
+            plan,
+            adapters,
+            WorkspaceManager(project),
+        )
+        publication_root = _prepare_publication_root(project, publication_relative)
+        result = publish_candidate(candidate, publication_root, run_id=run_id)
+    except (ConfigurationError, SnapshotError, OrchestrationError) as error:
+        result = _not_attempted(run_id, error.code, error.message)
+    except (OSError, RuntimeError, ValueError) as error:
+        result = _not_attempted(run_id, "build.infrastructure_error", str(error))
+    sys.stdout.buffer.write(result.canonical_bytes + b"\n")
+    return result.exit_code
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="osqar-inspector")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -85,9 +211,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     plan.add_argument("--project", required=True)
     plan.add_argument("--configuration", required=True)
     plan.add_argument("--override", action="append", default=[], nargs="+")
+    build = subparsers.add_parser("build")
+    build.add_argument("--project", required=True)
+    build.add_argument("--configuration", required=True)
+    build.add_argument("--override", action="append", default=[], nargs="+")
+    build.add_argument("--run-id")
     verify = subparsers.add_parser("verify")
     verify.add_argument("--bundle", required=True)
     args = parser.parse_args(argv)
+
+    if args.command == "build":
+        return _run_build(args)
 
     if args.command == "plan":
         try:
@@ -99,7 +233,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(_diagnostic(error.code, error.message), file=sys.stderr)
             return 1
         except OSError as error:
-            print(_diagnostic("plan.input_error", os.strerror(error.errno) if error.errno else str(error)), file=sys.stderr)
+            print(
+                _diagnostic(
+                    "plan.input_error",
+                    os.strerror(error.errno) if error.errno else str(error),
+                ),
+                file=sys.stderr,
+            )
             return 1
 
     try:
@@ -114,7 +254,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print(json.dumps({"bundle_id": bundle_id, "valid": True}, separators=(",", ":"), sort_keys=True))
+    print(
+        json.dumps(
+            {"bundle_id": bundle_id, "valid": True},
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    )
     return 0
 
 

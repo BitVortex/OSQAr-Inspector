@@ -178,6 +178,28 @@ def stat_mode(path: Path) -> int:
     return path.stat().st_mode & 0o777
 
 
+def test_allowed_untracked_root_does_not_hide_tracked_changes(tmp_path: Path) -> None:
+    repo = _repository(tmp_path)
+    (repo / "source.txt").write_bytes(b"source\n")
+    (repo / "build").mkdir()
+    (repo / "build" / "tracked.txt").write_bytes(b"tracked\n")
+    _commit(repo)
+    (repo / "build" / "publication.txt").write_bytes(b"owned output\n")
+
+    capture_git_snapshot(repo, allowed_untracked=("build",))
+
+    (repo / "outside.txt").write_bytes(b"unrelated\n")
+    with pytest.raises(SnapshotError) as outside_error:
+        capture_git_snapshot(repo, allowed_untracked=("build",))
+    assert outside_error.value.code == "snapshot.dirty_worktree"
+    (repo / "outside.txt").unlink()
+
+    (repo / "build" / "tracked.txt").write_bytes(b"modified\n")
+    with pytest.raises(SnapshotError) as error:
+        capture_git_snapshot(repo, allowed_untracked=("build",))
+    assert error.value.code == "snapshot.dirty_worktree"
+
+
 def test_dirty_or_unmerged_worktree_is_rejected(tmp_path: Path) -> None:
     tracked = _repository(tmp_path / "tracked")
     (tracked / "file.txt").write_bytes(b"committed\n")
