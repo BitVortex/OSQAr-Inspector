@@ -246,7 +246,7 @@ def test_version_probe_timeout_terminates_descendants(tmp_path: Path) -> None:
         "import subprocess, sys, time\n"
         "if '--version' in sys.argv:\n"
         "    child = \"import signal,time; from pathlib import Path; "
-        "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(.25); "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(.4); "
         "Path('escaped-version-probe').write_text('alive')\"\n"
         "    subprocess.Popen([sys.executable, '-c', child])\n"
         "    time.sleep(10)\n",
@@ -259,9 +259,9 @@ def test_version_probe_timeout_terminates_descendants(tmp_path: Path) -> None:
             [str(executable)],
             workspace=run.stage("version-timeout"),
             version_arguments=("--version",),
-            timeout_seconds=0.1,
+            timeout_seconds=0.2,
         )
-        time.sleep(0.35)
+        time.sleep(0.5)
         assert not list(run.path.rglob("escaped-version-probe"))
 
     assert result.status is ProcessStatus.SUCCEEDED

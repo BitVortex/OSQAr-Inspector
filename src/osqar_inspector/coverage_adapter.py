@@ -4,15 +4,38 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
+import sys
 import unicodedata
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, NoReturn
+from typing import Any, NoReturn
 
-from .adapters import CapabilityRequirements, DeclarativeStagePlan, Diagnostic
-from .configuration import ConfigurationError, _overrides, canonical_json, parse_json
+from .adapters import (
+    Capability,
+    CapabilityRequirements,
+    CommandPlan,
+    DeclarativeStagePlan,
+    Diagnostic,
+)
+from .configuration import (
+    ConfigurationError,
+    ResolvedConfiguration,
+    _overrides,
+    canonical_json,
+    parse_json,
+)
+from .process_runner import (
+    OutputDeclaration,
+    OwnedWorkspace,
+    ProcessResult,
+    ProcessRunner,
+    ProcessStatus,
+    WorkspaceManager,
+)
 from .snapshot import GitSnapshot
 
 MAP_SCHEMA_ID = "osqar.inspector.coverage-map.v1"
@@ -69,6 +92,11 @@ class CoverageRelation:
     source_path: str
     line: int | None
     symbol: str | None
+
+
+@dataclass(frozen=True)
+class CoverageCommandPlan(CommandPlan):
+    workspace: OwnedWorkspace | None = None
 
 
 @dataclass(frozen=True)
@@ -564,8 +592,73 @@ def _attestation_matches(
     return not diagnostics, tuple(diagnostics)
 
 
+_INVENTORY_OUTPUT = "coverage-inventory.json"
+
+
+def _valid_inventory_output(path: Path) -> bool:
+    try:
+        content = path.read_bytes()
+        value = parse_json(content)
+    except (OSError, ConfigurationError):
+        return False
+    return (
+        canonical_json(value) == content
+        and set(value) == {"entry_point", "report_tree_sha256", "schema"}
+        and value["schema"] == "osqar.inspector.coverage-inventory.v1"
+        and isinstance(value["entry_point"], str)
+        and isinstance(value["report_tree_sha256"], str)
+        and len(value["report_tree_sha256"]) == 64
+        and all(character in _HEX for character in value["report_tree_sha256"])
+    )
+
+
 class CoverageAdapter:
-    """Ingest a configured report tree without executing a coverage producer."""
+    """Inventory and ingest a pre-generated report without running its producer."""
+
+    def __init__(
+        self,
+        *,
+        runner: ProcessRunner | None = None,
+        snapshot_root: Path | None = None,
+        snapshot: GitSnapshot | None = None,
+        configuration: ResolvedConfiguration | None = None,
+    ) -> None:
+        self.runner = runner
+        self.snapshot_root = snapshot_root
+        self.snapshot = snapshot
+        self.configuration = configuration
+
+    def bind_runtime(
+        self,
+        *,
+        workspaces: WorkspaceManager,
+        snapshot_root: Path,
+        selected_paths: tuple[str, ...],
+        configuration: ResolvedConfiguration,
+        snapshot: GitSnapshot,
+    ) -> CoverageAdapter:
+        del selected_paths
+        return CoverageAdapter(
+            runner=ProcessRunner(workspaces),
+            snapshot_root=snapshot_root,
+            snapshot=snapshot,
+            configuration=configuration,
+        )
+
+    def _require_runtime(
+        self,
+    ) -> tuple[ProcessRunner, Path, GitSnapshot, ResolvedConfiguration]:
+        if (
+            self.runner is None
+            or self.snapshot_root is None
+            or self.snapshot is None
+            or self.configuration is None
+        ):
+            _fail(
+                "coverage.runtime_unconfigured",
+                "runtime adapter requires the shared runner and exact materialized snapshot",
+            )
+        return self.runner, self.snapshot_root, self.snapshot, self.configuration
 
     def validate_declaration(
         self, config: Mapping[str, Any]
@@ -607,6 +700,141 @@ class CoverageAdapter:
             expected_outputs=("artifacts/coverage",),
             workspace="stages/coverage",
         )
+
+    def probe(self, config: Mapping[str, Any], workspace: OwnedWorkspace) -> Capability:
+        del config
+        runner, _, _, _ = self._require_runtime()
+        result = runner.run(
+            [sys.executable, "--version"],
+            workspace=workspace,
+            accepted_exit_codes=frozenset({0}),
+        )
+        if result.status is not ProcessStatus.SUCCEEDED:
+            message = (
+                result.failure.message
+                if result.failure is not None
+                else "Inspector Python capability probe failed"
+            )
+            _fail("coverage.capability_probe_failed", message)
+        try:
+            version = result.stdout_path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeError) as error:
+            _fail("coverage.capability_probe_failed", str(error))
+        if not version:
+            _fail("coverage.capability_probe_failed", "Python version output is empty")
+        return Capability(os.fspath(result.executable.path), version)
+
+    def validate_capability(
+        self, config: Mapping[str, Any], capability: Capability
+    ) -> tuple[Diagnostic, ...]:
+        del config
+        version = re.fullmatch(
+            r"Python ([0-9]+)\.([0-9]+)(?:\.[0-9]+)?", capability.version
+        )
+        if (
+            not capability.executable
+            or version is None
+            or (int(version.group(1)), int(version.group(2))) < (3, 11)
+        ):
+            return (
+                Diagnostic(
+                    "coverage.capability_incompatible",
+                    "coverage ingestion requires an identified Python runtime at version 3.11 or newer",
+                ),
+            )
+        return ()
+
+    def plan_command(
+        self,
+        plan: DeclarativeStagePlan,
+        capability: Capability,
+        workspace: OwnedWorkspace,
+    ) -> CoverageCommandPlan:
+        runner, snapshot_root, _, configuration = self._require_runtime()
+        if not runner.workspaces.owns(workspace):
+            _fail(
+                "coverage.workspace_not_owned",
+                "coverage inventory requires an orchestrator-owned stage workspace",
+            )
+        if plan.stage != "coverage" or plan.selector != "builtin.coverage-ingest.v1":
+            _fail("coverage.declaration_invalid", "coverage command plan is inconsistent")
+        report = configuration.value["coverage"]["report"]
+        return CoverageCommandPlan(
+            argv=(
+                capability.executable,
+                os.fspath(Path(__file__).with_name("coverage_worker.py")),
+                "--root",
+                os.fspath(snapshot_root),
+                "--report",
+                report,
+                "--output",
+                _INVENTORY_OUTPUT,
+            ),
+            workspace=workspace,
+            outputs=(
+                OutputDeclaration(
+                    _INVENTORY_OUTPUT,
+                    kind="coverage-inventory",
+                    validator=_valid_inventory_output,
+                ),
+            ),
+        )
+
+    def execute(self, command_plan: CommandPlan) -> ProcessResult:
+        runner, _, _, _ = self._require_runtime()
+        if (
+            not isinstance(command_plan, CoverageCommandPlan)
+            or command_plan.workspace is None
+        ):
+            _fail(
+                "coverage.command_invalid",
+                "coverage execution requires an owned coverage command plan",
+            )
+        return runner.run(
+            command_plan.argv,
+            workspace=command_plan.workspace,
+            outputs=command_plan.outputs,
+            accepted_exit_codes=command_plan.accepted_exit_codes,
+        )
+
+    def collect(
+        self, process_result: ProcessResult, workspace: OwnedWorkspace
+    ) -> CoverageOutput:
+        runner, snapshot_root, snapshot, configuration = self._require_runtime()
+        if not runner.workspaces.owns(workspace):
+            _fail(
+                "coverage.workspace_not_owned",
+                "coverage collection requires an orchestrator-owned stage workspace",
+            )
+        if process_result.status is not ProcessStatus.SUCCEEDED:
+            _fail("coverage.process_failed", "failed inventory output cannot be collected")
+        try:
+            inventory_bytes = (workspace.path / _INVENTORY_OUTPUT).read_bytes()
+            inventory = parse_json(inventory_bytes)
+        except (OSError, ConfigurationError) as error:
+            _fail("coverage.output_malformed", str(error))
+        output = self.ingest(
+            configuration.value,
+            snapshot,
+            snapshot_root,
+            configuration_identity=configuration.identity,
+        )
+        if (
+            inventory.get("entry_point") != output.entry_point
+            or inventory.get("report_tree_sha256") != output.report_tree_sha256
+        ):
+            _fail(
+                "coverage.output_changed",
+                "collected report differs from the current-run inventory",
+            )
+        return output
+
+    def normalize(
+        self, producer_output: CoverageOutput, snapshot: GitSnapshot
+    ) -> CoverageOutput:
+        if producer_output is None or snapshot.snapshot_id != self._require_runtime()[2].snapshot_id:
+            _fail("coverage.output_malformed", "coverage output is not bound to this snapshot")
+        return producer_output
 
     def ingest(
         self,

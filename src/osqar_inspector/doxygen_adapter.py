@@ -8,11 +8,11 @@ import re
 import stat
 import unicodedata
 import xml.etree.ElementTree as ET
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
-from typing import Any, Mapping, NoReturn
+from typing import Any, NoReturn
 
 from .adapters import (
     Capability,
@@ -30,6 +30,7 @@ from .process_runner import (
     ProcessResult,
     ProcessRunner,
     ProcessStatus,
+    WorkspaceManager,
 )
 
 ARTIFACT_SCHEMA = "osqar.inspector.doxygen-artifact.v1"
@@ -55,12 +56,6 @@ class DoxygenAdapterError(Exception):
 class DoxygenCommandPlan(CommandPlan):
     workspace: OwnedWorkspace | None = None
     timeout_seconds: float = 300.0
-    outputs: tuple[OutputDeclaration, ...] = ()
-
-
-@dataclass(frozen=True)
-class DoxygenStagePlan(DeclarativeStagePlan):
-    warnings_as_errors: bool = False
 
 
 @dataclass(frozen=True)
@@ -254,6 +249,26 @@ class DoxygenAdapter(ProducerAdapter):
         self.executable = executable
         self.timeout_seconds = timeout_seconds
 
+    def bind_runtime(
+        self,
+        *,
+        workspaces: WorkspaceManager,
+        snapshot_root: Path,
+        selected_paths: Iterable[str],
+        configuration: Any | None = None,
+        snapshot: Any | None = None,
+    ) -> DoxygenAdapter:
+        """Bind pure adapter settings to the orchestrator-owned runtime context."""
+
+        del configuration, snapshot
+        return DoxygenAdapter(
+            runner=ProcessRunner(workspaces),
+            snapshot_root=snapshot_root,
+            selected_paths=selected_paths,
+            executable=self.executable,
+            timeout_seconds=self.timeout_seconds,
+        )
+
     def validate_declaration(
         self, config: Mapping[str, Any]
     ) -> tuple[tuple[Diagnostic, ...], CapabilityRequirements]:
@@ -277,7 +292,7 @@ class DoxygenAdapter(ProducerAdapter):
     ) -> DeclarativeStagePlan:
         doxygen = config["doxygen"]
         configuration = doxygen["configuration"]
-        return DoxygenStagePlan(
+        return DeclarativeStagePlan(
             stage="doxygen",
             selector=ADAPTER_SELECTOR,
             dependencies=("snapshot",),
@@ -285,7 +300,7 @@ class DoxygenAdapter(ProducerAdapter):
             invocation=("{capability.executable}", "{workspace.root}/Doxyfile.inspector"),
             expected_outputs=(doxygen["output"],),
             workspace="stages/doxygen",
-            warnings_as_errors=doxygen["warnings_as_errors"],
+            adapter_options=(("warnings_as_errors", doxygen["warnings_as_errors"]),),
         )
 
     def _require_runtime(self) -> tuple[ProcessRunner, Path]:
@@ -412,7 +427,7 @@ class DoxygenAdapter(ProducerAdapter):
                 f"GENERATE_TAGFILE = {quote(output_root / 'doxygen.tag')}",
                 "QUIET = YES",
                 "WARN_AS_ERROR = YES"
-                if isinstance(plan, DoxygenStagePlan) and plan.warnings_as_errors
+                if dict(plan.adapter_options).get("warnings_as_errors", False)
                 else "WARN_AS_ERROR = NO",
                 "",
             )

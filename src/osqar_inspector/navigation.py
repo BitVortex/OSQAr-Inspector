@@ -63,6 +63,7 @@ def _validate_producer_targets(graph: ArtifactGraph, root_parent: Path) -> None:
         NodeKind.COVERAGE_REPORT,
         NodeKind.COVERAGE_PAGE,
         NodeKind.COVERAGE_SUMMARY,
+        NodeKind.COVERAGE_SIDECAR,
         NodeKind.PRODUCER_LOG,
     }
     by_id = {node.node_id: node for node in graph.nodes}
@@ -194,7 +195,11 @@ def _coverage_relation_list(graph: ArtifactGraph) -> str:
 def _index(graph: ArtifactGraph) -> bytes:
     sources = [node for node in graph.nodes if node.kind is NodeKind.SOURCE_FILE]
     symbols = [node for node in graph.nodes if node.kind is NodeKind.SYMBOL]
-    api = [node for node in graph.nodes if node.kind is NodeKind.API_PAGE]
+    api = [
+        node
+        for node in graph.nodes
+        if node.kind in {NodeKind.API_PAGE, NodeKind.API_ARTIFACT}
+    ]
     coverage = [
         node
         for node in graph.nodes
@@ -202,10 +207,14 @@ def _index(graph: ArtifactGraph) -> bytes:
         in {NodeKind.COVERAGE_REPORT, NodeKind.COVERAGE_PAGE, NodeKind.COVERAGE_SUMMARY}
     ]
     logs = [node for node in graph.nodes if node.kind is NodeKind.PRODUCER_LOG]
+    sidecars = [node for node in graph.nodes if node.kind is NodeKind.COVERAGE_SIDECAR]
+    stage_outputs = [node for node in graph.nodes if node.kind is NodeKind.STAGE_OUTPUT]
     snapshot = next(node for node in graph.nodes if node.kind is NodeKind.SNAPSHOT)
     sections: list[str] = [
-        f"<p>Snapshot: <code>{html.escape(graph.snapshot_id)}</code> "
-        f"<small>(node: {html.escape(snapshot.node_id)})</small></p>",
+        (
+            f"<p>Snapshot: <code>{html.escape(graph.snapshot_id)}</code> "
+            f"<small>(node: {html.escape(snapshot.node_id)})</small></p>"
+        ),
     ]
     if api:
         sections.extend(("<section><h2>API artifacts</h2>", _artifact_list(api), "</section>"))
@@ -226,7 +235,15 @@ def _index(graph: ArtifactGraph) -> bytes:
         )
     if logs:
         sections.extend(("<section><h2>Producer logs</h2>", _artifact_list(logs), "</section>"))
-    if not (api or coverage or logs or sources or symbols):
+    if sidecars:
+        sections.extend(
+            ("<section><h2>Coverage sidecars</h2>", _artifact_list(sidecars), "</section>")
+        )
+    if stage_outputs:
+        sections.extend(
+            ("<section><h2>Stage outputs</h2>", _artifact_list(stage_outputs), "</section>")
+        )
+    if not (api or coverage or logs or sidecars or sources or stage_outputs or symbols):
         sections.append("<p>No producer artifacts are present in this graph.</p>")
     stages = [node for node in graph.nodes if node.kind is NodeKind.STAGE_RESULT]
     if stages:
@@ -377,10 +394,13 @@ def render_navigation(graph: ArtifactGraph, output_directory: str | Path) -> Nav
         NodeKind.SOURCE_FILE,
         NodeKind.SYMBOL,
         NodeKind.API_PAGE,
+        NodeKind.API_ARTIFACT,
         NodeKind.COVERAGE_REPORT,
         NodeKind.COVERAGE_PAGE,
         NodeKind.COVERAGE_SUMMARY,
+        NodeKind.COVERAGE_SIDECAR,
         NodeKind.PRODUCER_LOG,
+        NodeKind.STAGE_OUTPUT,
         NodeKind.STAGE_RESULT,
     }
     page_targets = {

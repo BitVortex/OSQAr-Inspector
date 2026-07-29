@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from .adapters import CapabilityRequirements, DeclarativeStagePlan, Diagnostic
 from .configuration import ResolvedConfiguration, canonical_json
@@ -96,12 +97,14 @@ def create_plan(
         stages.append(
             {
                 "adapter": {"selector": declaration.selector},
+                "adapter_options": dict(declaration.adapter_options),
                 "capability": capability_value,
                 "dependencies": list(declaration.dependencies),
                 "expected_outputs": list(declaration.expected_outputs),
                 "id": declaration.stage,
                 "invocation": {"argv": list(declaration.invocation)},
                 "policy": "required" if policy["required"] else "optional",
+                "required_inputs": list(declaration.required_inputs),
                 "workspace": declaration.workspace,
             }
         )

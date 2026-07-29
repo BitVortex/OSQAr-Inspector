@@ -7,9 +7,10 @@ import json
 import posixpath
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable, NoReturn, cast
+from typing import Any, NoReturn, cast
 
 from .configuration import canonical_json
 from .coverage_adapter import REPORT_TREE_SCHEMA_ID, CoverageOutput, CoverageProvenance
@@ -19,10 +20,10 @@ from .doxygen_adapter import (
     MAPPING_SCHEMA,
     DoxygenNormalizedOutput,
 )
+from .snapshot import SCHEMA_ID as SNAPSHOT_SCHEMA_ID
+from .snapshot import GitSnapshot
 from .stage_result import SCHEMA_ID as STAGE_RESULT_SCHEMA_ID
 from .stage_result import StagePolicy, StageResult, StageStatus
-from .snapshot import GitSnapshot
-from .snapshot import SCHEMA_ID as SNAPSHOT_SCHEMA_ID
 
 GRAPH_SCHEMA = "osqar.inspector.artifact-graph.v1"
 
@@ -32,10 +33,13 @@ class NodeKind(str, Enum):
     SOURCE_FILE = "source-file"
     SYMBOL = "symbol"
     API_PAGE = "api-page"
+    API_ARTIFACT = "api-artifact"
     COVERAGE_REPORT = "coverage-report"
     COVERAGE_PAGE = "coverage-page"
     COVERAGE_SUMMARY = "coverage-summary"
+    COVERAGE_SIDECAR = "coverage-sidecar"
     PRODUCER_LOG = "producer-log"
+    STAGE_OUTPUT = "stage-output"
     STAGE_RESULT = "stage-result"
     RENDERED_NAVIGATION_ARTIFACT = "rendered-navigation-artifact"
 
@@ -355,8 +359,12 @@ def _validate_stage_result(result: StageResult) -> None:
         "stage": result.stage,
         "status": result.status.value,
     }
-    if result.status in {StageStatus.SUCCEEDED, StageStatus.FAILED}:
-        if result.executable is None or result.stdout_path is None:
+    if result.executable is not None:
+        if result.status not in {
+            StageStatus.SUCCEEDED,
+            StageStatus.FAILED,
+            StageStatus.DEGRADED,
+        } or result.stdout_path is None:
             _fail("artifact_graph.identity_mismatch", "executed stage lacks process identity", result.stage)
         workspace = str(result.stdout_path.parent)
         stable_argv: list[str] = []
@@ -541,6 +549,7 @@ def build_artifact_graph(
 
     stage_by_name: dict[str, ArtifactNode] = {}
     stage_status_by_name: dict[str, str] = {}
+    executed_stage_names: set[str] = set()
     for result in sorted(
         stage_results,
         key=lambda item: _stage_identifier(item.stage).encode(),
@@ -564,8 +573,53 @@ def build_artifact_graph(
         )
         stage_by_name[result.stage] = stage
         stage_status_by_name[result.stage] = result.status.value
+        if result.executable is not None:
+            executed_stage_names.add(result.stage)
         nodes.append(stage)
         edges.append(_edge(EdgeKind.DESCRIBES_SNAPSHOT, stage.node_id, snapshot_node.node_id))
+        for output in result.outputs:
+            path = _path(output.path, field="stage output path")
+            kind = _identity_text(output.kind, field="stage output kind")
+            if (
+                not isinstance(output.size, str)
+                or not output.size.isdecimal()
+                or not _valid_sha256(output.sha256)
+            ):
+                _fail(
+                    "artifact_graph.invalid_digest",
+                    "stage output metadata is invalid",
+                    path,
+                )
+            stage_output = _node(
+                NodeKind.STAGE_OUTPUT,
+                {
+                    "kind": kind,
+                    "path": path,
+                    "sha256": output.sha256,
+                    "size": output.size,
+                    "snapshot_id": snapshot_id,
+                    "stage": result.stage,
+                },
+                label=path,
+                path=path,
+                sha256=output.sha256,
+                stage_status=result.status.value,
+            )
+            nodes.append(stage_output)
+            edges.append(
+                _edge(
+                    EdgeKind.GENERATED_BY_STAGE,
+                    stage_output.node_id,
+                    stage.node_id,
+                )
+            )
+            edges.append(
+                _edge(
+                    EdgeKind.DESCRIBES_SNAPSHOT,
+                    stage_output.node_id,
+                    snapshot_node.node_id,
+                )
+            )
 
     api_by_artifact: dict[str, ArtifactNode] = {}
     api_mapping_refids: set[tuple[str, str]] = set()
@@ -584,8 +638,6 @@ def build_artifact_graph(
                 _fail("artifact_graph.unsupported_schema", "API artifact schema is unsupported")
             if artifact.kind not in {"api-page", "producer-machine-output", "producer-asset"}:
                 _fail("artifact_graph.unsupported_kind", "API artifact kind is unsupported", artifact.kind)
-            if artifact.kind != "api-page":
-                continue
             path = _path(artifact.path, field="API artifact path")
             if (
                 not _valid_sha256(artifact.sha256)
@@ -600,6 +652,40 @@ def build_artifact_graph(
             ).hexdigest()
             if artifact.artifact_id != expected_artifact_id:
                 _fail("artifact_graph.identity_mismatch", "API artifact identity is invalid", path)
+            if artifact.kind != "api-page":
+                api_artifact = _node(
+                    NodeKind.API_ARTIFACT,
+                    {
+                        "adapter": ADAPTER_SELECTOR,
+                        "artifact_id": artifact.artifact_id,
+                        "kind": artifact.kind,
+                        "path": "artifacts/api/" + path,
+                        "provenance": "verified-current-snapshot",
+                        "sha256": artifact.sha256,
+                        "snapshot_id": snapshot_id,
+                    },
+                    label=path,
+                    path="artifacts/api/" + path,
+                    sha256=artifact.sha256,
+                    provenance="verified-current-snapshot",
+                )
+                nodes.append(api_artifact)
+                edges.append(
+                    _edge(
+                        EdgeKind.DESCRIBES_SNAPSHOT,
+                        api_artifact.node_id,
+                        snapshot_node.node_id,
+                    )
+                )
+                if "doxygen" in stage_by_name:
+                    edges.append(
+                        _edge(
+                            EdgeKind.GENERATED_BY_STAGE,
+                            api_artifact.node_id,
+                            stage_by_name["doxygen"].node_id,
+                        )
+                    )
+                continue
             api = _node(
                 NodeKind.API_PAGE,
                 {
@@ -801,6 +887,50 @@ def build_artifact_graph(
             if "coverage" in stage_by_name:
                 edges.append(_edge(EdgeKind.GENERATED_BY_STAGE, coverage.node_id, stage_by_name["coverage"].node_id))
 
+        for sidecar in sorted(
+            coverage_output.sidecars,
+            key=lambda item: (item.kind.encode(), item.path.encode()),
+        ):
+            path = _path(sidecar.path, field="coverage sidecar path")
+            if sidecar.kind not in {"mapping", "attestation"}:
+                _fail("artifact_graph.unsupported_kind", "coverage sidecar kind is unsupported", sidecar.kind)
+            digest = hashlib.sha256(sidecar.content).hexdigest()
+            expected_artifact_id = "coverage-sidecar:sha256:" + hashlib.sha256(
+                canonical_json({"kind": sidecar.kind, "path": path, "sha256": digest})
+            ).hexdigest()
+            if (
+                sidecar.artifact_id != expected_artifact_id
+                or sidecar.sha256 != digest
+                or sidecar.size != len(sidecar.content)
+            ):
+                _fail("artifact_graph.identity_mismatch", "coverage sidecar bytes are inconsistent", path)
+            retained_path = f"artifacts/coverage-sidecars/{sidecar.kind}/{path}"
+            sidecar_node = _node(
+                NodeKind.COVERAGE_SIDECAR,
+                {
+                    "artifact_id": sidecar.artifact_id,
+                    "kind": sidecar.kind,
+                    "path": retained_path,
+                    "sha256": digest,
+                    "size": str(sidecar.size),
+                    "snapshot_id": snapshot_id,
+                    "source_path": path,
+                },
+                label=path,
+                path=retained_path,
+                sha256=digest,
+            )
+            nodes.append(sidecar_node)
+            edges.append(_edge(EdgeKind.DESCRIBES_SNAPSHOT, sidecar_node.node_id, snapshot_node.node_id))
+            if "coverage" in stage_by_name:
+                edges.append(
+                    _edge(
+                        EdgeKind.GENERATED_BY_STAGE,
+                        sidecar_node.node_id,
+                        stage_by_name["coverage"].node_id,
+                    )
+                )
+
         for relation in coverage_output.relations:
             relation_identity = {
                 "fragment": relation.fragment,
@@ -874,10 +1004,7 @@ def build_artifact_graph(
         stage = stage_by_name.get(log.stage)
         if stage is None:
             _fail("artifact_graph.missing_endpoint", "producer log has no stage result", log.stage)
-        if stage.stage_status not in {
-            StageStatus.SUCCEEDED.value,
-            StageStatus.FAILED.value,
-        }:
+        if log.stage not in executed_stage_names:
             _fail(
                 "artifact_graph.stage_output_mismatch",
                 "producer log requires an executed stage result",
@@ -996,10 +1123,13 @@ _EDGE_ENDPOINTS: dict[EdgeKind, tuple[frozenset[NodeKind], frozenset[NodeKind]]]
         frozenset(
             {
                 NodeKind.API_PAGE,
+                NodeKind.API_ARTIFACT,
                 NodeKind.COVERAGE_REPORT,
                 NodeKind.COVERAGE_PAGE,
                 NodeKind.COVERAGE_SUMMARY,
+                NodeKind.COVERAGE_SIDECAR,
                 NodeKind.PRODUCER_LOG,
+                NodeKind.STAGE_OUTPUT,
             }
         ),
         frozenset({NodeKind.STAGE_RESULT}),
@@ -1111,6 +1241,46 @@ def _expected_node_identity(
             "status": node.stage_status,
         }
 
+    if node.kind is NodeKind.STAGE_OUTPUT:
+        required = {"kind", "path", "sha256", "size", "snapshot_id", "stage"}
+        stage_name = identity.get("stage")
+        stage = next(
+            (
+                candidate
+                for candidate in by_id.values()
+                if candidate.kind is NodeKind.STAGE_RESULT
+                and candidate.label == stage_name
+            ),
+            None,
+        )
+        size = identity.get("size")
+        if (
+            set(identity) != required
+            or stage is None
+            or node.path is None
+            or node.label != node.path
+            or node.fragment is not None
+            or node.provenance is not None
+            or node.stage_status != stage.stage_status
+            or not isinstance(size, str)
+            or not size.isdecimal()
+        ):
+            _fail(
+                "artifact_graph.identity_mismatch",
+                "stage output identity is invalid",
+                node.node_id,
+            )
+        _path(node.path, field="stage output node path")
+        kind = _identity_text(identity.get("kind"), field="stage output node kind")
+        return {
+            "kind": kind,
+            "path": node.path,
+            "sha256": node.sha256,
+            "size": size,
+            "snapshot_id": graph.snapshot_id,
+            "stage": stage.label,
+        }
+
     if node.kind is NodeKind.API_PAGE:
         if node.path is None or not node.path.startswith("artifacts/api/"):
             _fail("artifact_graph.identity_mismatch", "API path is invalid", node.node_id)
@@ -1128,6 +1298,52 @@ def _expected_node_identity(
         return {
             "adapter": ADAPTER_SELECTOR,
             "artifact_id": artifact_id,
+            "path": node.path,
+            "provenance": node.provenance,
+            "sha256": node.sha256,
+            "snapshot_id": graph.snapshot_id,
+        }
+
+    if node.kind is NodeKind.API_ARTIFACT:
+        required = {
+            "adapter",
+            "artifact_id",
+            "kind",
+            "path",
+            "provenance",
+            "sha256",
+            "snapshot_id",
+        }
+        if node.path is None or not node.path.startswith("artifacts/api/"):
+            _fail("artifact_graph.identity_mismatch", "API path is invalid", node.node_id)
+        relative = _path(
+            node.path.removeprefix("artifacts/api/"), field="API artifact node path"
+        )
+        artifact_kind = identity.get("kind")
+        artifact_id = "artifact:sha256:" + hashlib.sha256(
+            canonical_json(
+                {"kind": "doxygen-payload", "path": relative, "sha256": node.sha256}
+            )
+        ).hexdigest()
+        if (
+            set(identity) != required
+            or identity.get("adapter") != ADAPTER_SELECTOR
+            or identity.get("artifact_id") != artifact_id
+            or artifact_kind not in {"producer-machine-output", "producer-asset"}
+            or node.label != relative
+            or node.provenance != "verified-current-snapshot"
+            or node.fragment is not None
+            or node.stage_status is not None
+        ):
+            _fail(
+                "artifact_graph.identity_mismatch",
+                "API artifact fields are inconsistent",
+                node.node_id,
+            )
+        return {
+            "adapter": ADAPTER_SELECTOR,
+            "artifact_id": artifact_id,
+            "kind": artifact_kind,
             "path": node.path,
             "provenance": node.provenance,
             "sha256": node.sha256,
@@ -1256,6 +1472,49 @@ def _expected_node_identity(
             "report_tree_sha256": tree_digest,
             "sha256": node.sha256,
             "snapshot_id": graph.snapshot_id,
+        }
+
+    if node.kind is NodeKind.COVERAGE_SIDECAR:
+        required = {
+            "artifact_id",
+            "kind",
+            "path",
+            "sha256",
+            "size",
+            "snapshot_id",
+            "source_path",
+        }
+        sidecar_kind = identity.get("kind")
+        source_path = identity.get("source_path")
+        if (
+            set(identity) != required
+            or sidecar_kind not in {"mapping", "attestation"}
+            or not isinstance(source_path, str)
+            or node.path is None
+            or node.path != f"artifacts/coverage-sidecars/{sidecar_kind}/{source_path}"
+            or node.label != source_path
+            or node.fragment is not None
+            or node.provenance is not None
+            or node.stage_status is not None
+        ):
+            _fail("artifact_graph.identity_mismatch", "coverage sidecar fields are inconsistent", node.node_id)
+        _path(source_path, field="coverage sidecar source path")
+        size = identity.get("size")
+        if not isinstance(size, str) or not size.isdecimal():
+            _fail("artifact_graph.invalid_size", "coverage sidecar size is invalid", node.node_id)
+        artifact_id = "coverage-sidecar:sha256:" + hashlib.sha256(
+            canonical_json(
+                {"kind": sidecar_kind, "path": source_path, "sha256": node.sha256}
+            )
+        ).hexdigest()
+        return {
+            "artifact_id": artifact_id,
+            "kind": sidecar_kind,
+            "path": node.path,
+            "sha256": node.sha256,
+            "size": size,
+            "snapshot_id": graph.snapshot_id,
+            "source_path": source_path,
         }
 
     if node.kind is NodeKind.PRODUCER_LOG:

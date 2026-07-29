@@ -83,7 +83,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "adapter", "dependencies", "policy", "capability", "workspace", "invocation", "expected_outputs"],
+        "required": ["id", "adapter", "adapter_options", "dependencies", "policy", "capability", "workspace", "invocation", "expected_outputs", "required_inputs"],
         "properties": {
           "id": {"type": "string", "minLength": 1},
           "adapter": {
@@ -91,6 +91,11 @@
             "additionalProperties": false,
             "required": ["selector"],
             "properties": {"selector": {"type": "string", "minLength": 1}}
+          },
+          "adapter_options": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {"warnings_as_errors": {"type": "boolean"}}
           },
           "dependencies": {"$ref": "#/$defs/paths"},
           "policy": {"enum": ["required", "optional"]},
@@ -118,7 +123,8 @@
               "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1}
             }
           },
-          "expected_outputs": {"$ref": "#/$defs/paths"}
+          "expected_outputs": {"$ref": "#/$defs/paths"},
+          "required_inputs": {"$ref": "#/$defs/paths"}
         }
       }
     },
