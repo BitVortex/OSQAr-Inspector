@@ -1,10 +1,17 @@
+---
+layout: default
+title: Architecture
+---
+
 # Architecture
+
+[Documentation home](index.html) · [Getting started](getting-started.html) · [CLI](cli.html) · [OSQAr integration](osqar-integration.html)
 
 ## 1. Status and scope
 
-This document defines the target architecture for OSQAr Inspector. The implemented subset is stated in the repository README; components not listed there remain design targets rather than descriptions of available behavior. Schema names, command shapes, and component boundaries remain provisional until implemented and protected by contract tests.
+This document describes the OSQAr Inspector architecture. The standalone pipeline, public commands, versioned process handoff, and package gates described here are implemented and protected by contract tests. The OSQAr-side adapter remains a design target; sections that describe that bridge use future-facing language explicitly.
 
-The first usable integration targets Linux and Python 3.12 or newer. It inspects a reviewed clean Git snapshot, generates or ingests API and coverage artifacts, creates a normalized graph and navigation layer, and publishes a closed bundle for optional OSQAr import.
+The supported standalone deployment targets Linux with Python 3.12 or 3.13. It inspects a reviewed clean Git snapshot, generates or ingests API and coverage artifacts, creates a normalized graph and navigation layer, and publishes a closed bundle for optional downstream import.
 
 ## 2. Architectural drivers
 
@@ -177,7 +184,7 @@ The validator requires an exact closed inventory, canonical manifest, checksum f
 
 ### OSQAr bridge
 
-The bridge invokes or verifies Inspector through a versioned process and bundle contract. It confirms source/configuration bindings, imports candidate records without approval, keeps the Inspector bundle byte-identical, and includes it inside OSQAr’s outer shipment integrity boundary. See [OSQAr integration](osqar-integration.md).
+The future OSQAr bridge invokes or verifies Inspector through the implemented versioned process and bundle contract. It confirms source/configuration bindings, imports candidate records without approval, keeps the Inspector bundle byte-identical, and includes it inside OSQAr’s outer shipment integrity boundary. See [OSQAr integration](osqar-integration.html).
 
 ## 7. Dependency rules
 
@@ -208,7 +215,7 @@ The following are publication-blocking invariants:
 
 Stage status is one of `succeeded`, `failed`, `blocked`, `skipped`, or `degraded`.
 
-Publication state is separate from stage status and follows the closed state machine in [Design contracts](design.md#publication-result-and-state-machine).
+Publication state is separate from stage status and follows the closed state machine in [Design contracts](design.html#publication-result-and-state-machine).
 
 - A required stage not in `succeeded` blocks publication and returns non-zero.
 - An optional stage may be skipped or degraded only when policy permits and the final index reports it prominently.
@@ -228,7 +235,7 @@ macOS and Windows support require native acceptance lanes before being claimed. 
 
 Accepted initial decisions:
 
-- Python 3.12 or newer;
+- Python 3.12 and 3.13;
 - standard `pyproject.toml` packaging and `uv` workflow;
 - UTF-8 JSON with RFC 8785 canonicalization;
 - SHA-256 lowercase hexadecimal digests;

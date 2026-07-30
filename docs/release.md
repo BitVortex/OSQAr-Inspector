@@ -1,4 +1,11 @@
+---
+layout: default
+title: Release policy
+---
+
 # Release policy
+
+[Documentation home](index.html) · [Getting started](getting-started.html) · [CLI](cli.html) · [Design contracts](design.html)
 
 This document defines the tested package-compatibility boundary for OSQAr Inspector. The machine-readable source of truth is `src/osqar_inspector/resources/release-policy-v1.json`; every wheel and source distribution includes it and the release gate verifies its bound contract-asset digests.
 

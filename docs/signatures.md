@@ -1,4 +1,11 @@
+---
+layout: default
+title: Detached signature envelope v1
+---
+
 # Detached signature envelope v1
+
+[Documentation home](index.html) · [Getting started](getting-started.html) · [CLI](cli.html) · [Design contracts](design.html)
 
 ## Scope and claim boundary
 
@@ -110,7 +117,7 @@ result = verify_detached_signature(
 
 ## Interoperability vector
 
-[`tests/fixtures/signatures/v1-ed25519.json`](../tests/fixtures/signatures/v1-ed25519.json) publishes:
+The packaged [`signatures-v1-ed25519.json`](https://github.com/BitVortex/OSQAr-Inspector/blob/main/src/osqar_inspector/resources/interoperability/signatures-v1-ed25519.json) interoperability fixture publishes:
 
 - every exact closed-bundle file as unpadded base64url;
 - the expected bundle ID;
