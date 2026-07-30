@@ -124,6 +124,120 @@ osqar-inspector-run-v1
 
 OSQAr must reject unsupported versions rather than attempting permissive interpretation.
 
+### `osqar-inspector-run-v1` argv
+
+The reference caller uses these exact argument vectors (each bracketed value is
+one argument; no shell is involved):
+
+```text
+[osqar-inspector] [capabilities]
+  [--protocol] [osqar-inspector-run-v1]
+  [--result-file] [<caller-owned-path>]
+
+[osqar-inspector] [plan]
+  [--protocol] [osqar-inspector-run-v1]
+  [--result-schema] [osqar.inspector.plan-process-result.v1]
+  [--result-file] [<caller-owned-path>]
+  [--project] [<absolute-project-path>]
+  [--configuration] [<project-relative-controlled-path>]
+
+[osqar-inspector] [build]
+  [--protocol] [osqar-inspector-run-v1]
+  [--result-schema] [osqar.inspector.build-process-result.v1]
+  [--result-file] [<caller-owned-path>]
+  [--project] [<absolute-project-path>]
+  [--configuration] [<project-relative-controlled-path>]
+  [--run-id] [<caller-owned-run-id>]
+
+[osqar-inspector] [verify]
+  [--protocol] [osqar-inspector-run-v1]
+  [--result-schema] [osqar.inspector.verify-process-result.v1]
+  [--result-file] [<caller-owned-path>]
+  [--bundle] [<absolute-bundle-path>]
+```
+
+The existing standalone argv without `--protocol`, `--result-schema`, and
+`--result-file` remains a human CLI. Its stdout/stderr is not protocol data.
+Protocol callers read only the exact canonical JSON bytes in `--result-file`.
+The caller must supply a path that does not exist; Inspector creates it and
+never replaces an existing file or symbolic link. The reference caller accepts
+the returned object only when no symbolic link was followed and the opened
+result is a singly linked regular file, excluding hard-linked pre-existing
+content. Producer and reference caller retain an opened descriptor for the
+caller-owned parent directory and perform result creation/opening relative to
+that descriptor; the caller rejects parent-directory substitution during
+execution. The reference caller uses a finite configurable process timeout
+(300 seconds by default), retains at most the first 1 MiB of each console
+stream, and rejects result files larger than 16 MiB. Its Linux subprocess
+supervisor acts as a child subreaper and kills and reaps producer descendants,
+including descendants that create a new session, before accepting a result. For
+`plan`, the result file
+is the sole requested filesystem output and
+must be outside the inspected project, so producer probing and project-tree
+mutation remain prohibited.
+
+### Capability and result contracts
+
+The capability result is the closed
+`osqar.inspector.capabilities-result.v1` object with exactly
+`inspector_version`, `protocol`, `schema`, and `supported_schemas`.
+`supported_schemas` has exactly these singleton sets:
+
+```json
+{
+  "bundle": ["osqar.inspector.bundle-manifest.v1"],
+  "config": ["osqar.inspector.config.v1"],
+  "plan": ["osqar.inspector.plan.v1"],
+  "publication-result": ["osqar.inspector.publication-result.v1"],
+  "run-report": ["osqar.inspector.run.v1"],
+  "signature-envelope": ["osqar.inspector.detached-signature.v1"],
+  "snapshot": ["osqar.inspector.snapshot.v1"],
+  "stage-result": ["osqar.inspector.stage-result.v1"]
+}
+```
+
+All process-result objects are closed:
+
+- `plan-process-result.v1` contains exactly `configuration_identity`,
+  `diagnostics`, `plan`, `protocol`, `schema`, `source`, and `status`.
+  `status` is `succeeded`, `blocked`, or `failed`. Successful and blocked
+  results carry the complete config-v1 identity and the snapshot Git source
+  object; failed results carry null bindings.
+- `build-process-result.v1` contains exactly `configuration_identity`,
+  `protocol`, `publication`, `schema`, `source`, and `status`. A successful
+  result carries the complete config-v1 identity, Git commit/tree source
+  object, and the closed publication-result-v1 object.
+- `verify-process-result.v1` contains exactly `bundle_id`, `diagnostics`,
+  `protocol`, `schema`, `status`, and `valid`.
+- Pre-dispatch version rejection uses the closed
+  `osqar.inspector.protocol-error.v1` object with exactly `diagnostics`,
+  `protocol`, `schema`, and `status`.
+
+Diagnostic objects are closed: they contain string `code` and `message`
+members and may contain one string `path` member identifying an associated
+failure location or the offending path value. No other diagnostic members are
+accepted.
+
+Canonical means the same RFC 8785 profile used by Inspector configuration and
+identity records, with no trailing newline. Duplicate members, extra members,
+noncanonical bytes, unsupported schemas/protocols, and result/exit
+disagreement are rejected.
+
+Exit `0` means only: a successful plan, successful verification, or a build
+whose publication state is `durable-success` or
+`recovered-durable-success`. Plan/verify failure uses `1`; protocol negotiation
+rejection uses `2`. Build publication exits are closed by state:
+`not-attempted=10`, `definite-pre-commit-failure=11`,
+`commit-indeterminate=12`, `recovered-no-commit=13`, and
+`recovery-blocked=14`. Console prose cannot change any of these decisions.
+For ordinary build states, the publication result `run_id` must equal the
+caller-owned `--run-id`; validation rejects an ordinary result if that expected
+caller identity is omitted. Reconciliation states use the reserved value
+`recovery` and are rejected with any other run identity. A caller-owned run ID
+must be one non-empty path component: the reserved `recovery` value, `.`, `..`,
+slash, backslash, and NUL are rejected during protocol negotiation before build
+dispatch.
+
 ## 7. Integrated preparation sequence
 
 The intended sequence is:

@@ -152,7 +152,9 @@ class LinuxPublicationOperations:
         path.unlink()
 
 
-def _single_component(value: str) -> bool:
+def valid_run_id(value: str) -> bool:
+    """Return whether a run identifier is one safe publication path component."""
+
     return (
         bool(value)
         and value not in {".", ".."}
@@ -160,6 +162,12 @@ def _single_component(value: str) -> bool:
         and "\\" not in value
         and "\x00" not in value
     )
+
+
+def valid_caller_run_id(value: str) -> bool:
+    """Return whether a run identifier is valid and not reserved for recovery."""
+
+    return value != "recovery" and valid_run_id(value)
 
 
 def _directory(path: Path, code: str) -> os.stat_result:
@@ -407,7 +415,7 @@ def _publish_candidate_locked(
     candidate_root: Path | None = None
     candidate_owned = False
     replacement_started = False
-    if not _single_component(run_id):
+    if not valid_run_id(run_id):
         return _failure(
             run_id,
             PublicationState.NOT_ATTEMPTED,
@@ -572,7 +580,7 @@ def publish_candidate(
     """Serialize and publish one closed candidate."""
 
     root = Path(publication_root)
-    if not _single_component(run_id):
+    if not valid_run_id(run_id):
         return _failure(
             run_id,
             PublicationState.NOT_ATTEMPTED,
