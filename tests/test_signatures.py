@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 from dataclasses import dataclass
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
@@ -90,7 +91,9 @@ def decode_vector(value: str) -> bytes:
 
 
 def test_fixed_signature_vector_verifies_exact_bundle_binding(tmp_path: Path) -> None:
-    fixture_path = Path("tests/fixtures/signatures/v1-ed25519.json")
+    fixture_path = files("osqar_inspector").joinpath(
+        "resources", "interoperability", "signatures-v1-ed25519.json"
+    )
     vector = json.loads(fixture_path.read_bytes())
     bundle_root = tmp_path / "fixture-bundle"
     for relative, encoded in vector["bundle_files"].items():

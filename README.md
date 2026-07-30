@@ -25,10 +25,11 @@ An eventual mechanical inspection result will describe only the configured stage
 - [Design contracts](docs/design.md) — command, configuration, identity, adapter, graph, bundle, and publication contracts.
 - [Detached signatures](docs/signatures.md) — canonical Ed25519 envelope, exact signed bytes, caller-supplied trust, typed results, and interoperability vector.
 - [Integration with OSQAr](docs/osqar-integration.md) — responsibility split, process boundary, identity binding, evidence-state mapping, and packaging flow.
+- [Release policy](docs/release.md) — exact Linux/Python/protocol/schema support set, package gates, compatibility rules, and release checklist.
 
 ## Quick start
 
-Python 3.12 or newer and [uv](https://docs.astral.sh/uv/) are required for development:
+Linux with Python 3.12 or 3.13 and [uv](https://docs.astral.sh/uv/) are required for the advertised support set and development:
 
 ```sh
 uv sync
