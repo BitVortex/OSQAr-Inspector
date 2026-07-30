@@ -1,0 +1,47 @@
+{
+  "schema": "osqar.inspector.release-policy.v1",
+  "package": {
+    "name": "osqar-inspector",
+    "version": "0.1.0"
+  },
+  "fixture_revision": 1,
+  "contract_assets": {
+    "config-v1.schema.json": "933272ec40d477b644752d4910feeed779e3e6735258a0bbb470facc29c72e81",
+    "coverage-attestation-v1.schema.json": "f6cca873bfd05e4418a107c1a2b84ea63a6999e93bb82e47874947139a8c78bd",
+    "coverage-map-v1.schema.json": "2f110b89daee598089f94dfb84f83d0e85708bd189ddbe4a02dfd26c17867ec7",
+    "defaults-v1.json": "4d91a085534a6299bed05263c88ab8dd4822f68e9d019066bc7f08023a780966",
+    "interoperability/signatures-v1-ed25519.json": "9023735db53d231250a6eb2e6fe49d984d24f90aedcaa407ed1cec2622cd88bf",
+    "interoperability/vectors.json": "cb2b599c12bd7b94079c1e283c408c78eeba5e055ffb70c108e1e998865266c7",
+    "plan-v1.schema.json": "8b6c3c17b7c3c07e7c306391bb2061329eb1f080c5214383333b4a39c684ec2d"
+  },
+  "support": {
+    "operating_systems": ["linux"],
+    "python": ["3.12", "3.13"],
+    "process_protocols": ["osqar-inspector-run-v1"],
+    "schemas": [
+      "osqar.inspector.artifact-graph.v1",
+      "osqar.inspector.build-process-result.v1",
+      "osqar.inspector.bundle-manifest.v1",
+      "osqar.inspector.capabilities-result.v1",
+      "osqar.inspector.config.v1",
+      "osqar.inspector.configuration.interoperability.v1",
+      "osqar.inspector.coverage-attestation.v1",
+      "osqar.inspector.coverage-inventory.v1",
+      "osqar.inspector.coverage-map.v1",
+      "osqar.inspector.coverage-report-tree.v1",
+      "osqar.inspector.detached-signature.v1",
+      "osqar.inspector.doxygen-artifact.v1",
+      "osqar.inspector.doxygen-mapping.v1",
+      "osqar.inspector.plan-process-result.v1",
+      "osqar.inspector.plan.v1",
+      "osqar.inspector.protocol-error.v1",
+      "osqar.inspector.publication-result.v1",
+      "osqar.inspector.release-policy.v1",
+      "osqar.inspector.run.v1",
+      "osqar.inspector.signature-vector.v1",
+      "osqar.inspector.snapshot.v1",
+      "osqar.inspector.stage-result.v1",
+      "osqar.inspector.verify-process-result.v1"
+    ]
+  }
+}

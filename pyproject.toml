@@ -5,9 +5,16 @@ build-backend = "hatchling.build"
 [project]
 name = "osqar-inspector"
 version = "0.1.0"
-description = "Closed-bundle verifier for OSQAr Inspector"
+description = "Deterministic evidence-bundle inspection companion for OSQAr workflows"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 dependencies = [
     "cryptography>=45,<47",
 ]
