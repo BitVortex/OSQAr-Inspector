@@ -1,0 +1,10 @@
+title: OSQAr Inspector
+description: Deterministic evidence-bundle inspection companion for OSQAr workflows
+url: https://bitvortex.github.io
+baseurl: /OSQAr-Inspector
+repository: BitVortex/OSQAr-Inspector
+theme: jekyll-theme-minimal
+markdown: kramdown
+strict_front_matter: true
+exclude:
+  - _site

@@ -1,4 +1,13 @@
+---
+layout: default
+title: Integration with OSQAr
+---
+
 # Integration with OSQAr
+
+[Documentation home](index.html) · [Getting started](getting-started.html) · [CLI](cli.html) · [Design contracts](design.html)
+
+> **Implementation status:** Inspector's standalone commands and `osqar-inspector-run-v1` process side are implemented. The OSQAr-owned adapter, `osqar inspect`, typed OSQAr configuration, and automatic shipment import described below remain proposed integration work.
 
 ## 1. Purpose and baseline
 

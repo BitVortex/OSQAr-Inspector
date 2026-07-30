@@ -1,8 +1,15 @@
+---
+layout: default
+title: Design contracts
+---
+
 # Design contracts
+
+[Documentation home](index.html) · [Getting started](getting-started.html) · [CLI](cli.html) · [Architecture](architecture.html)
 
 ## 1. Status
 
-This document defines the intended public contracts. The development implementation currently covers strict `osqar.inspector.config.v1` resolution and identity, `osqar.inspector.snapshot.v1` clean-Git capture/materialization and complete materialized-record comparison, deterministic side-effect-free `osqar.inspector.plan.v1` construction, byte-preserving pre-generated coverage-report ingestion with independent mapping and attestation validation as specified in Section 11, the deterministic artifact graph and separately rendered navigation layer specified in Section 12, deterministic closure of finalized candidate payloads, `verify`, `osqar.inspector.bundle-manifest.v1`, `osqar.inspector.run.v1`, and the v1 internal-link contract as summarized in the README; the other sections remain design targets. Identifiers ending in `.v1` remain provisional until their schemas, validators, interoperability tests, and release policy land together as a supported interface.
+This document defines the implemented standalone public contracts for package version `0.1.0`: strict configuration identity, clean-Git snapshots, side-effect-free planning, producer orchestration, Doxygen acquisition, pre-generated coverage ingestion, artifact graphs and navigation, closed-bundle generation and verification, detached signatures, durable Linux publication, and the versioned process handoff. These contracts are included in the package release policy and protected by schema, contract, interoperability, and release-gate tests. The OSQAr-owned adapter described in Section 16 remains a design target.
 
 ## 2. Command contract
 
@@ -588,7 +595,7 @@ OSQAr consumes only a closed bundle plus run report under supported versions. It
 - required stage result policy; and
 - provenance classifications.
 
-OSQAr may derive candidate evidence and implementation records, but must not infer `approved`. See [OSQAr integration](osqar-integration.md).
+OSQAr may derive candidate evidence and implementation records, but must not infer `approved`. See [OSQAr integration](osqar-integration.html).
 
 ## 17. Evolution rules
 
